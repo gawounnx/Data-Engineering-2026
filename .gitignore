@@ -1,0 +1,29 @@
+# 가상환경
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# 인증·비밀 정보
+service-account*.json
+application_default_credentials.json
+.env
+.env.*
+*.pem
+
+# 수집 데이터
+data/*.json
+*/data/*.json
+
+# 강의 자료
+lecture_*.html
+
+# OS / 에디터
+.DS_Store
+.idea/
+.vscode/
+
+# 제출물·캡처
+*.docx
+*.pdf
+스크린샷*.png
