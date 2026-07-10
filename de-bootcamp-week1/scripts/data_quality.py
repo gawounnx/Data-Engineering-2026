@@ -54,3 +54,36 @@ def validate_posts_payload(payload: dict[str, Any], *, min_records: int = 1) -> 
         f"[품질 검증 통과] posts — {len(records)}건, "
         f"필수 필드({', '.join(required_fields)}) 이상 없음"
     )
+
+
+def validate_stock_payload(payload: dict) -> None:
+    """주식 시세 데이터 품질 검증. 실패 시 예외를 던져 파이프라인을 중단한다."""
+
+    # 1. records 존재 여부
+    records = payload.get("records")
+    if not records:
+        raise ValueError("records 키가 없거나 비어 있습니다.")
+
+    # 2. record_count 일치
+    expected = payload.get("record_count", 0)
+    actual = len(records)
+    if expected != actual:
+        raise ValueError(f"record_count 불일치: 메타데이터={expected}, 실제={actual}")
+
+    # 3. 필수 필드 검증
+    required_fields = ("basDt", "itmsNm", "clpr", "trqu")
+    for i, record in enumerate(records):
+        for field in required_fields:
+            value = record.get(field)
+            if value is None or str(value).strip() == "":
+                raise ValueError(f"필수 필드 누락: record[{i}].{field}")
+
+    # 4. 종가·거래량 숫자 여부
+    for i, record in enumerate(records):
+        for field in ("clpr", "trqu"):
+            try:
+                float(record[field])
+            except (ValueError, TypeError):
+                raise ValueError(f"숫자 아님: record[{i}].{field} = {record[field]!r}")
+
+    print(f"[품질 검증 통과] stock_prices — {actual}건, 필수 필드(basDt, itmsNm, clpr, trqu) 이상 없음")

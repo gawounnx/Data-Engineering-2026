@@ -27,3 +27,5 @@ lecture_*.html
 *.docx
 *.pdf
 스크린샷*.png
+bok_page.html
+data/*.csv
