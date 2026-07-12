@@ -1,0 +1,5 @@
+datasets>=2.19.0
+sentence-transformers>=3.0.0
+# Use `uv pip install --torch-backend cpu -r scripts/requirements.txt`
+# to avoid downloading CUDA/NVIDIA wheels on CPU-only Linux machines.
+torch>=2.2.0
