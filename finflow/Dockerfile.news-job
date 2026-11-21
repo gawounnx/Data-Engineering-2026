@@ -1,0 +1,23 @@
+FROM python:3.12-slim
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+
+COPY requirements.txt .
+
+# Cloud Run Job은 CPU 환경이므로 CPU 전용 PyTorch를 먼저 설치한다.
+RUN pip install --no-cache-dir \
+    --index-url https://download.pytorch.org/whl/cpu \
+    torch
+
+# torch가 이미 설치되어 있으므로 sentence-transformers가
+# CUDA용 torch 패키지를 다시 설치하지 않는다.
+RUN pip install --no-cache-dir \
+    -r requirements.txt
+
+COPY scripts ./scripts
+
+CMD ["python", "scripts/pipelines/run_news_pipeline.py"]

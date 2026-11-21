@@ -2,7 +2,7 @@
 
 ## 현재 실행 가능한 범위
 
-이 저장소에는 최신 FinFlow app.py·src·배포 설정이 없습니다. 따라서 clone 후 최신 서비스가 바로 실행된다고 안내할 수 없습니다. 초기 실습의 환경 안내는 [macOS](../de-bootcamp-week1/SETUP_MAC.md), [Windows](../de-bootcamp-week1/SETUP_WINDOWS.md), [1주차](../de-bootcamp-week1/README.md), [2주차](../de-bootcamp-week2/README.md)를 참고합니다.
+최신 FinFlow 앱 소스·뉴스 파이프라인·DAG·배포 설정은 [finflow/](../finflow/README.md)에 있습니다. 벡터 DB 등 생성 데이터는 Git에 포함하지 않으므로, 실행 전 [finflow/README.md](../finflow/README.md)의 "데이터 준비" 절차로 ChromaDB를 내려받거나 생성해야 합니다. 금융용어 컬렉션을 처음부터 만드는 스크립트는 아직 저장소에 포함되지 않았습니다. 초기 실습의 환경 안내는 [macOS](../de-bootcamp-week1/SETUP_MAC.md), [Windows](../de-bootcamp-week1/SETUP_WINDOWS.md), [1주차](../de-bootcamp-week1/README.md), [2주차](../de-bootcamp-week2/README.md)를 참고합니다.
 
 실행 명령은 저장소 이름 변경 여부와 무관하게 사용할 수 있도록 현재 checkout 디렉터리를 기준으로 합니다.
 

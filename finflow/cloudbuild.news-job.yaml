@@ -1,0 +1,12 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - Dockerfile.news-job
+      - -t
+      - asia-northeast3-docker.pkg.dev/melodic-furnace-501500-g4/finflow/news-job:latest
+      - .
+
+images:
+  - asia-northeast3-docker.pkg.dev/melodic-furnace-501500-g4/finflow/news-job:latest
