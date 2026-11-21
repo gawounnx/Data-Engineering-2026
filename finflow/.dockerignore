@@ -1,0 +1,38 @@
+# 가상환경
+.venv
+.venv-*
+venv
+
+# Airflow 런타임과 DAG (이미지에 필요 없음)
+airflow
+dags
+logs
+*.log
+
+# 데이터: ChromaDB만 이미지에 포함한다
+data/*
+!data/chroma/
+!data/chroma/**
+
+# 캐시
+**/__pycache__
+**/*.pyc
+**/*.pyo
+
+# 비밀 정보와 Git
+.git
+.gitignore
+.env
+.env.*
+service-account*.json
+*credentials*.json
+*.pem
+*.key
+
+# 문서·테스트·백업
+README.md
+tests
+experiments
+*.backup
+*_backup.py
+.DS_Store
