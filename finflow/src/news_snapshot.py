@@ -13,13 +13,14 @@
 from __future__ import annotations
 
 import os
+import shutil
 import tarfile
 import tempfile
 import threading
 import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from google.api_core.exceptions import GoogleAPIError, NotFound
 from google.auth.exceptions import GoogleAuthError
@@ -51,6 +52,10 @@ DATA_SETUP_GUIDE = (
 
 class SnapshotValidationError(Exception):
     """스냅샷에 필수 컬렉션이 없거나 비어 있을 때 발생한다."""
+
+
+class UnsafeSnapshotError(SnapshotValidationError):
+    """스냅샷 압축 파일에 허용하지 않는 항목이 있을 때 발생한다."""
 
 
 @dataclass(frozen=True)
@@ -125,27 +130,91 @@ def _missing_message(
     )
 
 
+def _describe_member_type(member: tarfile.TarInfo) -> str:
+    """허용하지 않는 tar 항목의 종류를 설명한다."""
+    if member.issym():
+        return "심볼릭 링크"
+    if member.islnk():
+        return "하드 링크"
+    if member.ischr():
+        return "문자 장치 파일"
+    if member.isblk():
+        return "블록 장치 파일"
+    if member.isfifo():
+        return "FIFO"
+    return f"지원하지 않는 항목 유형({member.type!r})"
+
+
+def _validate_member(
+    member: tarfile.TarInfo,
+    destination: Path,
+) -> None:
+    """tar 항목 하나가 대상 폴더 안의 일반 파일·디렉터리인지 확인한다."""
+    name = member.name
+
+    if not (member.isfile() or member.isdir()):
+        raise UnsafeSnapshotError(
+            "스냅샷에 허용하지 않는 항목이 있어 거부했습니다: "
+            f"{name} ({_describe_member_type(member)})"
+        )
+
+    posix_path = PurePosixPath(name)
+
+    if (
+        not name
+        or posix_path.is_absolute()
+        or PureWindowsPath(name).is_absolute()
+        or PureWindowsPath(name).drive
+        or ".." in posix_path.parts
+        or ".." in PureWindowsPath(name).parts
+    ):
+        raise UnsafeSnapshotError(
+            f"스냅샷에 안전하지 않은 경로가 있어 거부했습니다: {name}"
+        )
+
+    member_path = (destination / name).resolve()
+
+    if member_path == destination:
+        if member.isdir():
+            return
+        raise UnsafeSnapshotError(
+            f"스냅샷에 안전하지 않은 경로가 있어 거부했습니다: {name}"
+        )
+
+    if destination not in member_path.parents:
+        raise UnsafeSnapshotError(
+            f"스냅샷에 안전하지 않은 경로가 있어 거부했습니다: {name}"
+        )
+
+
 def _safe_extract(
     archive: tarfile.TarFile,
     destination: Path,
 ) -> None:
-    """경로 탈출을 차단하며 스냅샷 압축을 해제한다."""
+    """일반 파일·디렉터리만 대상 폴더 안에 압축 해제한다.
+
+    - 모든 항목을 먼저 검사하고, 하나라도 위반하면 아무것도 풀지 않는다.
+    - 절대 경로, '..', 대상 폴더 밖으로 해석되는 경로를 거부한다.
+    - 심볼릭 링크, 하드 링크, 장치 파일, FIFO 등은 거부한다.
+    - 지원되는 Python에서는 tarfile 'data' 필터를 함께 적용한다.
+    """
     resolved_destination = destination.resolve()
+    members = archive.getmembers()
 
-    for member in archive.getmembers():
-        member_path = (
-            resolved_destination / member.name
-        ).resolve()
+    for member in members:
+        _validate_member(member, resolved_destination)
 
-        if (
-            member_path != resolved_destination
-            and resolved_destination not in member_path.parents
-        ):
-            raise ValueError(
-                f"안전하지 않은 스냅샷 경로입니다: {member.name}"
-            )
-
-    archive.extractall(resolved_destination)
+    if hasattr(tarfile, "data_filter"):
+        archive.extractall(
+            resolved_destination,
+            members=members,
+            filter="data",
+        )
+    else:  # pragma: no cover - data 필터가 없는 오래된 Python
+        archive.extractall(
+            resolved_destination,
+            members=members,
+        )
 
 
 def _activate_snapshot(chroma_path: Path) -> None:
@@ -163,6 +232,12 @@ def _download_snapshot(
     generation: str,
 ) -> Path:
     """세대별 임시 경로에 스냅샷을 내려받고 검증한다."""
+    # GCS generation은 정수다. 경로로 쓰기 전에 확인한다.
+    if not generation.isdigit():
+        raise UnsafeSnapshotError(
+            f"스냅샷 generation 값이 올바르지 않습니다: {generation!r}"
+        )
+
     version_root = SNAPSHOT_ROOT / generation
     chroma_path = version_root / "chroma"
 
@@ -174,18 +249,24 @@ def _download_snapshot(
         exist_ok=True,
     )
     archive_path = version_root / "snapshot.tar.gz"
-    blob.download_to_filename(str(archive_path))
 
-    with tarfile.open(archive_path, mode="r:gz") as archive:
-        _safe_extract(
-            archive=archive,
-            destination=version_root,
-        )
+    try:
+        blob.download_to_filename(str(archive_path))
 
-    if not (chroma_path / CHROMA_DB_FILENAME).exists():
-        raise FileNotFoundError(
-            "스냅샷에 ChromaDB 파일이 없습니다."
-        )
+        with tarfile.open(archive_path, mode="r:gz") as archive:
+            _safe_extract(
+                archive=archive,
+                destination=version_root,
+            )
+
+        if not (chroma_path / CHROMA_DB_FILENAME).exists():
+            raise FileNotFoundError(
+                "스냅샷에 ChromaDB 파일이 없습니다."
+            )
+    except Exception:
+        # 일부만 풀렸거나 거부된 스냅샷을 남기지 않는다.
+        shutil.rmtree(version_root, ignore_errors=True)
+        raise
 
     archive_path.unlink(missing_ok=True)
     return chroma_path
