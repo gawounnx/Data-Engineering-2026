@@ -3,29 +3,18 @@
 외부 API에서 데이터를 수집하고, 품질 검증을 거쳐 GCS(원본 보관)와 BigQuery(구조화 적재)에 저장하는 첫 번째 클라우드 파이프라인을 구현했습니다.
 
 ## 전체 파이프라인 흐름
-[1일차]
-JSONPlaceholder API
-│  day1_requests_crawler.py
-▼
-품질 검증 (data_quality.py)
-│  record_count 일치 · 필수 필드 null 검사
-▼
-data/raw_posts.json
-[2일차]
-raw_posts.json
-│  day2_upload_to_gcp.py
-├── ① 품질 검증 ← 실패 시 여기서 중단 (이중 게이트)
-├── ② GCS 업로드  → gs://dbai-2026-project/week1/raw_posts.json
-├── ③ BigQuery 적재 → data_sample.posts (20건)
-└── ④ 실행 이력 기록 → data_sample.ingest_metadata
-[FinFlow AI — 개인 프로젝트]
-금융위원회 API → raw_stock_prices.json (300건)
-한국은행 API  → bok_financial_terms_raw.json (69건)
-│  day2_upload_stock_to_gcp.py
-├── ① 품질 검증 (validate_stock_payload)
-├── ② GCS 업로드  → gs://dbai-2026-project/week1/raw_stock_prices.json
-├── ③ BigQuery 적재 → data_sample.stock_prices (300건)
-└── ④ 실행 이력 기록 → data_sample.ingest_metadata
+
+```mermaid
+flowchart TD
+    A["게시글 API / 금융위원회 시세 API"] --> B["수집 JSON"]
+    B --> C["데이터별 검증"]
+    C --> D["GCS 원본 보관"]
+    D --> E["BigQuery 데이터·적재 이력"]
+```
+
+한국은행 용어 수집은 별도 경로입니다. 주가 업로더에 용어 데이터를 입력하지 않습니다. 게시글 수집기는 수집 직후 검증하지만 주가 수집기의 해당 호출은 주석 처리되어 있습니다. 주가 업로더는 업로드 전에 검증합니다.
+
+> 초기 학습·구현 기록입니다. 최신 서비스의 실행 범위는 [실행 안내](../docs/reproduction.md)를 참고하세요. 아래 20·69·300건은 과거 실행 기록입니다. 주가 적재는 `WRITE_APPEND`이며 재실행하면 중복이 생길 수 있습니다.
 
 ## 설계 포인트
 
@@ -34,7 +23,7 @@ raw_posts.json
 - BigQuery: SQL로 조회하는 분석용 저장소 = 데이터 웨어하우스
 - 각 레코드에 gcs_uri를 남겨 원본을 역추적할 수 있음
 
-**업로드 전 품질 검증 (이중 게이트)**
+**업로드 전 품질 검증**
 - 검증이 GCS 업로드보다 먼저 실행됨
 - 불량 데이터가 클라우드에 도달하기 전에 파이프라인 중단
 - "조용한 실패(silent failure)" 방지가 핵심 목적
@@ -60,8 +49,11 @@ raw_posts.json
 ## 실행 방법
 
 ```bash
-# 가상환경 활성화 (중요: conda base와 uv .venv 공존 환경)
+# 저장소 루트에서 시작
+cd de-bootcamp-week1
+python -m venv .venv
 source .venv/bin/activate
+python -m pip install -r scripts/requirements.txt
 
 # 1일차: API 수집
 python scripts/day1_requests_crawler.py --limit 20 --output data/raw_posts.json
@@ -70,8 +62,8 @@ python scripts/day1_requests_crawler.py --limit 20 --output data/raw_posts.json
 gcloud auth application-default login
 
 # 2일차: GCS + BigQuery 적재
-export GCP_PROJECT_ID=melodic-furnace-501500-g4
-export GCP_BUCKET=dbai-2026-project
+export GCP_PROJECT_ID=your-project-id
+export GCP_BUCKET=your-bucket
 
 python scripts/day2_upload_to_gcp.py \
   --source data/raw_posts.json \
@@ -118,7 +110,7 @@ ORDER BY ingested_at_utc DESC LIMIT 5;
 | 증상 | 원인 | 해결 |
 |------|------|------|
 | `ImportError: cannot import name 'bigquery'` | 패키지는 uv `.venv`에 설치, 실행은 conda base의 Python | `source .venv/bin/activate` 후 실행 또는 `.venv/bin/python` 직접 호출 |
-| 버킷 이름이 빈 값으로 전달됨 | `GCP_BUCKET` 환경변수 export 누락 | `export GCP_BUCKET=dbai-2026-project` 후 재실행 |
+| 버킷 이름이 빈 값으로 전달됨 | `GCP_BUCKET` 환경변수 export 누락 | `export GCP_BUCKET=your-bucket` 후 재실행 |
 | `DataQualityError: records[0].id 가 비어 있습니다` | `day2_upload_to_gcp.py`가 posts 전용이라 주식 데이터 필드를 모름 | 주식 전용 `day2_upload_stock_to_gcp.py` 별도 작성 |
 | `SERVICE_KEY_IS_NOT_REGISTERED_ERROR` | 공공데이터포털 Encoding 키 사용 | Decoding 키로 교체 |
 

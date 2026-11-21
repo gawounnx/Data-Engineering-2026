@@ -6,7 +6,7 @@ FinFlow는 BDAI 데이터 엔지니어링 부트캠프에서 배운 수집·검�
 
 강의자료 출처: https://drive.google.com/drive/folders/17LM7qv4AaPPku3VTNy_BEX08fn_YkpN4
 
-폴더 목록에서 de-bootcamp-week1.zip, week2.zip, week3.zip, week4.zip, week5.zip, data.zip을 확인했습니다. 현재 문서 작성 시점에는 ZIP 내부 소스 전체 비교가 완료되지 않았습니다. 강의 코드와 동일한 코드의 줄 단위 기여를 확정하지 않습니다. 강의 원본은 통째로 재업로드하지 않습니다.
+폴더 목록에서 de-bootcamp-week1.zip, week2.zip, week3.zip, week4.zip, week5.zip, data.zip을 확인했습니다. 1~5주차 ZIP의 계획서·가이드와 3주차 평가 코드·DAG를 확인했습니다. data.zip 내부와 모든 소스의 줄 단위 비교는 수행하지 않았습니다. 강의 코드와 동일한 코드의 줄 단위 기여를 확정하지 않습니다. 강의 원본은 통째로 재업로드하지 않습니다.
 
 ## 기여 범위
 
