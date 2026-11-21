@@ -12,7 +12,10 @@
 | 뉴스 적재 no such field: source_type | 기존 테이블 스키마와 입력 필드 불일치 | 실습에서 테이블 재생성 후 재적재 | 최초 125건, 재실행 신규 0건 |
 | Streamlit watcher의 torchvision 오류 | transformers 모듈 탐색 중 선택 의존성 import | 현재 소스와 설정에서 watcher 동작 재점검 필요 | 최종 해결 여부 미확인 |
 | Airflow worker SIGSEGV | 로그만으로 단일 원인 확정 불가 | 별도 환경과 실행 방식 확인 필요 | DAG 테스트 성공은 있음; 장기 scheduler 안정성 미확인 |
-| Docker COPY data 실패 | build context에서 data 부재 또는 ignore 규칙 | .dockerignore·.gcloudignore·Dockerfile 정합성 점검 | 해당 후속 빌드의 성공 재확인 필요 |
+| Docker COPY data 실패 | build context에서 data 부재 또는 ignore 규칙 | `data/chroma/.gitkeep` 추가, 깨진 `.dockerignore` 패턴 복구 | COPY 대상 존재만 정적 점검. 실제 빌드 성공 재확인 필요 |
+| clone 직후 빈 ChromaDB가 정상으로 보임 | 검색 모듈이 빈 폴더에서 빈 `chroma.sqlite3`를 만들고, 상태 점검은 파일 존재만 확인 | 두 컬렉션의 문서 수를 확인하고 DB 파일이 없으면 열지 않음, 화면에 준비 방법 표시 | 자동 테스트 통과 (`finflow/tests/test_news_snapshot.py`, `test_app_ui.py`) |
+| GCP 인증 실패 시 앱 중단 | `DefaultCredentialsError`·`RefreshError`가 `GoogleAPIError`의 하위 클래스가 아님 | 인증 예외를 처리하고 원인과 조치를 표시 | 자동 테스트 통과 (mock) |
+| 스냅샷 압축 해제의 링크·장치 파일 허용 | 경로 검사만 하고 항목 유형을 검사하지 않음 | 일반 파일·디렉터리만 허용, 경로 탈출 거부, `data` 필터 적용 | 자동 테스트 통과 (`test_snapshot_extract.py`) |
 
 뉴스 테이블 삭제·재생성은 당시 실습의 해결 이력입니다. 실제 데이터가 있는 환경에는 그대로 적용하지 않습니다. 스키마 변경과 백업·마이그레이션을 먼저 검토해야 합니다.
 
