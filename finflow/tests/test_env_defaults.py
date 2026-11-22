@@ -32,9 +32,10 @@ def test_chunker_uses_defaults_for_empty_bigquery_env(monkeypatch):
         monkeypatch.setenv(key, value)
     monkeypatch.setattr(chunker, "load_dotenv", lambda *a, **k: None)
     monkeypatch.setattr(chunker.bigquery, "Client", mock.MagicMock())
+    monkeypatch.setattr(chunker, "read_ingest_state", lambda path: chunker.IngestState())
     captured = {}
 
-    def stop_after_capture(client, project_id, dataset_id, location):
+    def stop_after_capture(client, project_id, dataset_id, location, **kwargs):
         captured.update(project_id=project_id, dataset_id=dataset_id, location=location)
         raise ValueError("stop")
 
@@ -55,6 +56,7 @@ def test_upload_uses_defaults_for_empty_env(monkeypatch):
     monkeypatch.setenv("FINFLOW_BUCKET", "")
     monkeypatch.setenv("CHROMA_SNAPSHOT_OBJECT", "")
     monkeypatch.setattr(uploader, "create_snapshot", lambda: None)
+    monkeypatch.setattr(uploader, "validate_chroma", lambda *a, **k: {})
 
     with mock.patch.object(uploader, "upload_snapshot") as upload:
         uploader.main()
