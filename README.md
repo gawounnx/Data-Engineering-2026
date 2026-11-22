@@ -15,10 +15,10 @@ Python · GCS · BigQuery · Sentence Transformers · ChromaDB · Gemini · Stre
 
 | 구분 | 내용 |
 |---|---|
-| **구현 완료** (코드 공개) | Streamlit 앱(`finflow/app_ui.py`), 금융용어 벡터 검색과 뉴스 하이브리드 검색을 거쳐 Gemini로 답변 생성(`finflow/src/`), 뉴스 수집부터 ChromaDB 스냅샷까지 파이프라인(`finflow/scripts/`), Airflow DAG, Dockerfile과 Cloud Build 설정, 데이터 준비 상태 판단, 스냅샷 안전 압축 해제 |
-| **테스트 완료** (자동 테스트) | `finflow/tests/` 30개 통과. 데이터 준비 상태 판단, 스냅샷 압축 해제 보안, Streamlit 화면(AppTest). GCS는 mock을 쓰고 Gemini는 호출하지 않음 |
-| **미검증** | Docker 빌드와 실행, 실제 GCS 스냅샷 다운로드, Cloud Run 배포, 질문 제출부터 Gemini 답변까지의 전체 흐름, Airflow scheduler 정기 실행, 검색·답변 품질 |
-| **향후 계획** | 금융용어 생성 스크립트(PDF 파싱부터 ChromaDB 적재까지) 반영, 홈 화면 고정 수치 제거, 주가 조회의 앱 연결 여부 결정, 고정 질문 평가 세트 |
+| **구현 완료** (코드 공개) | Streamlit 앱(`finflow/app_ui.py`), 금융용어 벡터 검색과 뉴스 하이브리드 검색을 거쳐 Gemini로 답변 생성(`finflow/src/`), 뉴스 수집부터 ChromaDB 스냅샷까지 파이프라인(`finflow/scripts/`), 금융용어 생성 파이프라인(PDF 추출부터 ChromaDB 적재까지, [`finflow/scripts/terms/`](finflow/scripts/terms/README.md)), Airflow DAG, Dockerfile과 Cloud Build 설정, 데이터 준비 상태 판단, 스냅샷 안전 압축 해제 |
+| **테스트 완료** (자동 테스트) | `finflow/tests/` 43개 통과. 데이터 준비 상태 판단, 스냅샷 압축 해제 보안, Streamlit 화면(AppTest), 금융용어 생성 파이프라인의 운영 데이터 보호(13개). GCS·BigQuery는 mock을 쓰고 Gemini는 호출하지 않음 |
+| **미검증** | Docker 빌드와 실행, 실제 GCS 스냅샷 다운로드, Cloud Run 배포, 질문 제출부터 Gemini 답변까지의 전체 흐름, Airflow scheduler 정기 실행, 검색·답변 품질, 금융용어 BigQuery 실제 적재·조회와 운영 반영(서비스 DB·GCS 스냅샷 교체) |
+| **향후 계획** | 홈 화면 고정 수치 제거, 주가 조회의 앱 연결 여부 결정, 고정 질문 평가 세트 |
 
 ## 사용자 문제와 핵심 경험
 
@@ -50,8 +50,8 @@ Python · GCS · BigQuery · Sentence Transformers · ChromaDB · Gemini · Stre
 
 | 개발 이력 | 기록된 결과 | 현재 공개 코드 상태 |
 |---|---|---|
-| 금융용어 확장 | 초기 69건 → PDF 기반 770건, BigQuery 770행 | PDF 파서·정제 스크립트 미반영 |
-| 금융용어 벡터 검색 | 2026-08-01 ChromaDB count 1,121 | 검색 코드 반영(`finflow/src/retriever.py`). 컬렉션 생성 로더는 미반영이며, 데이터는 GCS 스냅샷으로 복원 |
+| 금융용어 확장 | 초기 69건 → PDF 기반 770건, BigQuery 770행 | PDF 추출·파서·정제·BigQuery 적재 코드 반영([`finflow/scripts/terms/`](finflow/scripts/terms/README.md)). 2026-11-23 로컬 재현에서 용어 770건이 기존 결과물과 같음. BigQuery 실제 적재·조회는 미검증 |
+| 금융용어 벡터 검색 | 2026-08-01 ChromaDB count 1,121 | 검색 코드 반영(`finflow/src/retriever.py`). 청킹·임베딩·컬렉션 생성 코드 반영(`finflow/scripts/terms/`). 2026-11-23 로컬 재현에서 1,121청크가 기존 컬렉션과 ID·본문 일치. 서비스 데이터는 지금도 GCS 스냅샷으로 복원하며 운영 반영은 미검증 |
 | 뉴스 수집·중복 처리 | 최초 125건, 동일 입력 재실행 신규 0건, 후속 누적 183건 | 수집·적재·청킹·임베딩·적재 코드 반영(`finflow/scripts/`). 수치는 재측정하지 않음 |
 | 자동화와 서비스 | 뉴스 DAG 테스트·Streamlit RAG·Cloud Run 배포 기록 | 앱·DAG·Dockerfile·Cloud Build 설정 반영. 컨테이너 빌드와 Cloud Run은 미검증 |
 
