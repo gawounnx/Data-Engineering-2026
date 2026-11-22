@@ -6,9 +6,9 @@ from uuid import uuid4
 import requests
 
 
-LOG_COLLECTOR_URL = os.getenv(
-    "LOG_COLLECTOR_URL",
-    "http://127.0.0.1:8080",
+LOG_COLLECTOR_URL = (
+    os.getenv("LOG_COLLECTOR_URL", "").strip()
+    or "http://127.0.0.1:8080"
 )
 
 

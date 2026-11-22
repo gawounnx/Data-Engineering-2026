@@ -29,10 +29,7 @@ def run_command(command: list[str]) -> None:
 
 def main() -> None:
     """최신 벡터 DB를 복원하고 Streamlit을 시작한다."""
-    port = os.getenv(
-        "PORT",
-        "8080",
-    ).strip()
+    port = os.getenv("PORT", "").strip() or "8080"
 
     print("[시작] 최신 ChromaDB 스냅샷 복원")
 

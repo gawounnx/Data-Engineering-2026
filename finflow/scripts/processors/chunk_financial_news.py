@@ -427,20 +427,21 @@ def main() -> None:
     """BigQuery 뉴스 조회부터 청킹까지 실행한다."""
     load_dotenv()
 
-    project_id = os.getenv(
-        "GCP_PROJECT_ID",
-        "melodic-furnace-501500-g4",
-    ).strip()
+    # .env에 빈 값으로 남아 있어도 기본값을 사용한다.
+    project_id = (
+        os.getenv("GCP_PROJECT_ID", "").strip()
+        or "melodic-furnace-501500-g4"
+    )
 
-    dataset_id = os.getenv(
-        "BQ_DATASET_ID",
-        "finflow",
-    ).strip()
+    dataset_id = (
+        os.getenv("BQ_DATASET_ID", "").strip()
+        or "finflow"
+    )
 
-    location = os.getenv(
-        "BQ_LOCATION",
-        "asia-northeast3",
-    ).strip()
+    location = (
+        os.getenv("BQ_LOCATION", "").strip()
+        or "asia-northeast3"
+    )
 
     try:
         client = bigquery.Client(

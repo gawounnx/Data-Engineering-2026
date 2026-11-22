@@ -7,11 +7,15 @@ from functools import lru_cache
 
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 
 load_dotenv()
 
 DEFAULT_MODEL_NAME = "gemini-flash-latest"
+# gemini-flash-latest 별칭은 v1beta에서만 제공된다.
+# google-genai 3.x의 기본 API 버전은 v1이라 명시하지 않으면 404가 난다.
+DEFAULT_API_VERSION = "v1beta"
 
 
 def validate_prompt(prompt: str) -> str:
@@ -50,12 +54,25 @@ def get_model_name() -> str:
     return model_name
 
 
+def get_api_version() -> str:
+    """GOOGLE_GENAI_API_VERSION을 읽는다. 비어 있으면 기본값(v1beta)을 쓴다."""
+    return os.getenv("GOOGLE_GENAI_API_VERSION", "").strip() or DEFAULT_API_VERSION
+
+
+def build_http_options() -> types.HttpOptions:
+    """API 버전을 명시한 HTTP 옵션을 만든다. 재시도 정책은 SDK 기본 동작을 따른다."""
+    return types.HttpOptions(api_version=get_api_version())
+
+
 @lru_cache(maxsize=1)
 def load_gemini_client() -> genai.Client:
     """Gemini API 클라이언트를 생성한다."""
     api_key = get_api_key()
 
-    return genai.Client(api_key=api_key)
+    return genai.Client(
+        api_key=api_key,
+        http_options=build_http_options(),
+    )
 
 
 def generate_answer(prompt: str) -> str:

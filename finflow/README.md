@@ -41,7 +41,11 @@ clone 직후 `data/chroma/`에는 빈 폴더를 유지하기 위한 `.gitkeep`�
 python scripts/vectorstores/download_chroma_snapshot.py
 ```
 
-이 스크립트는 기존 `data/chroma/`를 지우고 다시 만들기 때문에 `.gitkeep`이 사라질 수 있습니다. 그렇게 되면 `git checkout -- data/chroma/.gitkeep`으로 복구합니다.
+이 스크립트는 스냅샷을 `data/` 아래 임시 폴더에 내려받아 다음을 확인합니다.
+- 압축 항목이 `chroma/` 아래의 일반 파일·디렉터리인지
+- `financial_terms`와 `financial_news`가 모두 있고 비어 있지 않은지
+
+모두 통과한 경우에만 기존 `data/chroma/`를 교체합니다. 다운로드, 압축 해제, 검증 중 어느 단계에서 실패해도 기존 데이터는 그대로 남습니다. 교체 후에는 스냅샷에 `.gitkeep`이 없을 수 있으니, 필요하면 `git checkout -- data/chroma/.gitkeep`으로 복구합니다.
 
 ### 2-B. 뉴스 데이터 갱신 (전체 파이프라인)
 
@@ -102,6 +106,26 @@ python scripts/start_streamlit.py
 
 `.env`의 `FINFLOW_BUCKET`과 `CHROMA_SNAPSHOT_OBJECT`가 모두 비어 있으면 로컬 `data/chroma/`를 씁니다. 하나라도 값이 있으면 GCS 스냅샷을 5분 간격으로 확인합니다. 새 세대가 있으면 임시 폴더에 내려받아 검증한 뒤 검색 경로를 교체합니다.
 
+### Gemini 설정과 호출량
+
+`src/llm.py`는 API 버전을 코드에서 명시합니다. `google-genai`는 `requirements.txt`에서 검증한 버전(3.6.1)으로 고정합니다.
+
+| 환경 변수 | 기본값 | 설명 |
+|---|---|---|
+| `GEMINI_MODEL` | `gemini-flash-latest` | 모델 이름 또는 별칭 |
+| `GOOGLE_GENAI_API_VERSION` | `v1beta` | 비어 있으면 `v1beta`를 씁니다. `google-genai` 3.x의 기본값은 `v1`이고, `gemini-flash-latest` 별칭은 `v1`에서 404를 반환합니다 |
+
+질문 하나에 Gemini를 보통 3번 호출합니다(질문 분석 → 금융용어 재정렬 → 최종 답변). 재시도 정책은 따로 설정하지 않고 SDK 기본 동작을 따릅니다. `google-genai` 3.6.1에서 오류 응답은 재시도 없이 한 번만 보내는 것을 오프라인 테스트로 확인했습니다.
+
+2026-11-22 로컬 측정값입니다. `gemini-flash-latest`가 `gemini-3.8-flash`로 연결됐고, "기준금리가 뭐야?" 한 번에 다음과 같았습니다.
+- 요청 3회
+- 토큰 합계 약 7.7k (사고 토큰 포함)
+- 화면 기준 약 36초
+
+모델 버전이나 질문에 따라 값은 달라집니다.
+
+요금은 앱을 배포한 프로젝트가 아니라 **API 키가 속한 프로젝트의 결제 계정**에 청구됩니다. 그 결제 계정의 선불 잔액이 0이면 모든 질문이 HTTP 402 `RESOURCE_EXHAUSTED`로 실패합니다. 이때는 AI Studio에서 키의 프로젝트를 확인한 뒤 결제 계정을 바꾸거나 잔액을 충전합니다.
+
 ## 3-1. 테스트
 
 ```bash
@@ -114,8 +138,12 @@ python -m pytest tests -v
 | `tests/test_news_snapshot.py` | 데이터 준비 상태 판단 시나리오 10개. 빈 clone, 빈 DB, 빈 컬렉션, 정상 로컬 데이터, 인증 실패 2종, 스냅샷 부재, 용어 누락 스냅샷 거부, 정상 스냅샷 적용과 이후 실패 시 유지 |
 | `tests/test_snapshot_extract.py` | 스냅샷 압축 해제 보안 검증. 일반 파일과 디렉터리만 허용하는지 확인. 경로 탈출(`..`, 절대 경로, Windows 경로), 심볼릭 링크, 하드 링크, 장치 파일, FIFO, 링크를 통한 우회 쓰기를 거부하는지 확인. 거부된 스냅샷은 적용하지 않고 정리하는지, 숫자가 아닌 generation을 거부하는지 확인 |
 | `tests/test_app_ui.py` | Streamlit AppTest로 데이터 없음과 있음 각각의 화면 검증 |
+| `tests/test_download_snapshot_script.py` | `download_chroma_snapshot.py`가 다운로드·압축 해제·검증·교체 중 어느 단계에서 실패해도 기존 `data/chroma/`를 보존하는지, `chroma/` 밖 경로와 심볼릭 링크를 거부하는지 확인 |
+| `tests/test_term_ranking.py` | 키워드 정확 일치 용어가 병합 결과 상위에 오는지 확인 |
+| `tests/test_env_defaults.py` | 빈 환경 변수가 스크립트 기본값을 덮어쓰지 않는지 확인 |
+| `tests/test_llm_config.py` | Gemini 요청이 기본 `v1beta` 경로로 가는지 확인. `GOOGLE_GENAI_API_VERSION`이 빈 값이면 `v1beta`, 값이 있으면 그 버전을 쓰는지 확인. 키를 헤더로 보내는지, 오류 응답을 재시도 없이 한 번만 보내는지 확인. HTTP 전송 계층은 가짜 응답으로 대체 |
 
-테스트는 매번 임시 폴더에 작은 ChromaDB를 새로 만듭니다. 그래서 실제 데이터, GCS 인증, Gemini 키 없이 실행됩니다. GCS는 mock으로 대체하고 이벤트 로그 전송도 막습니다. 질문 제출부터 Gemini 답변까지의 흐름은 테스트하지 않습니다.
+테스트는 매번 임시 폴더에 작은 ChromaDB를 새로 만듭니다. 그래서 실제 데이터, GCS 인증, Gemini 키 없이 실행됩니다. GCS와 Gemini HTTP 전송은 mock으로 대체하고, 이벤트 로그 전송도 막습니다. 실제 Gemini 응답 품질과 질문 제출부터 답변까지의 화면 흐름은 자동 테스트에 포함하지 않습니다.
 
 ## 4. 컨테이너 빌드와 배포
 
