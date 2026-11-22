@@ -2,16 +2,17 @@
 
 ## 실제 확인 범위
 
-현재 공개 코드에는 초기 금융 API 수집, 데이터 검증, GCS/BigQuery 적재, 전처리와 임베딩·검색 실습이 있습니다. 최신 앱·뉴스·Airflow·배포는 과거 개발 기록을 기준으로 설명하며, 현재 저장소의 실행 가능한 전체 아키텍처를 뜻하지 않습니다.
+공개 코드는 두 부분으로 나뉩니다. 주차별 폴더에는 초기 금융 API 수집, 데이터 검증, GCS/BigQuery 적재, 전처리, 임베딩·검색 실습이 있습니다. [finflow/](../finflow/README.md)에는 최신 앱, 뉴스 파이프라인, Airflow DAG, 배포 설정이 있습니다. 아래 구조는 코드 기준이며, 컨테이너와 Cloud Run에서의 실제 동작은 아직 검증하지 않았습니다.
 
 ## 데이터 경로
 
 | 경로 | 처리 | 저장·소비 |
 |---|---|---|
-| 금융용어 | 초기 웹 JSON 수집 → PDF 추출·파싱으로 확장 → 정제·청킹·임베딩 | BigQuery 용어 테이블 / ChromaDB financial_terms / RAG |
-| 주식 시세 | API 응답의 필수 필드·건수·숫자 검증 → 수치 변환 | GCS 원본 / BigQuery stock_prices |
-| 금융 뉴스 | 네이버 검색 API → 기사 검증·중복 제거 | 날짜별 GCS 원본 / BigQuery financial_news |
-| 질문 | 금융용어 검색 → 근거 구성 → Gemini 호출 | Streamlit 답변·근거 표시 |
+| 금융용어 | 초기 웹 JSON 수집 → PDF 추출·파싱으로 확장 → 정제·청킹·임베딩 (생성 스크립트 미반영) | BigQuery 용어 테이블 / ChromaDB financial_terms / RAG |
+| 주식 시세 | API 응답의 필수 필드·건수·숫자 검증 → 수치 변환 | GCS 원본 / BigQuery stock_prices (현재 앱에는 미연결) |
+| 금융 뉴스 | 네이버 검색 API → 기사 검증·중복 제거 → BigQuery에서 읽어 청킹·임베딩 | 날짜별 GCS 원본 / BigQuery financial_news / ChromaDB financial_news |
+| 질문 | 질문 분석 → 금융용어 벡터 검색·재정렬 → 뉴스 하이브리드(키워드·벡터·최신성) 검색 → Gemini 답변 | Streamlit 답변·용어 근거·뉴스 출처 표시 |
+| 벡터 스냅샷 | `data/chroma` 전체(두 컬렉션)를 tar.gz로 묶음 | GCS `finflow/vectorstore/chroma/latest.tar.gz` |
 
 초기 코드의 데이터셋은 `data_sample`, 후속 뉴스·배포 기록에는 `finflow`가 등장합니다. 이름만 바꾸어 동일 테이블이 존재한다고 가정하지 않고 실제 데이터셋·리전을 확인해야 합니다.
 
@@ -26,16 +27,20 @@
 | Airflow | 수집·검증·업로드·적재 단계 관찰 | 별도 Python 환경·scheduler 운영 부담 | 단일 파이프라인 스크립트 + 스케줄러 |
 | Cloud Run 앱·Job | 상시 서버 관리 없이 시연·배치 분리 | cold start, 메모리, 외부 API 비용·권한 관리 | 로컬 시연과 수동 수집 |
 
-Airflow DAG와 Cloud Run Job은 각각 구현 이력이 있습니다. 둘 모두 운영에 반드시 필요하다는 뜻은 아니며, 실제 운영 주체와 스케줄은 최신 코드 확인 후 단순화합니다.
+공개 코드에는 두 실행 경로가 모두 있습니다. Airflow DAG(`finflow/dags/`)는 수집 → 검증 → GCS → BigQuery까지 실행합니다. Cloud Run Job용 파이프라인(`finflow/scripts/pipelines/run_news_pipeline.py`)은 여기에 더해 청킹, 임베딩, ChromaDB 적재, 스냅샷 업로드까지 실행합니다. 수집과 적재 단계가 겹치므로, 실제 운영 주체와 스케줄을 정해 단순화해야 합니다.
 
 ## 배포와 데이터 수명
 
-Cloud Run 앱의 과거 배포에는 GCS 벡터 스냅샷 경로, Secret Manager의 Gemini 키 주입 설정이 있습니다. 다른 버전에서는 이미지에 data 디렉터리를 포함하려다 빌드가 실패했습니다. 최종 데이터 공급 방식을 코드와 함께 확정해야 합니다. Cloud Run의 로컬 변경을 영구 저장으로 간주하지 않습니다.
+코드 기준 데이터 공급 방식은 두 가지입니다([finflow/README.md 4장](../finflow/README.md)).
+- **이미지에 포함:** 빌드 전에 스냅샷을 내려받아 `data/chroma`를 이미지에 넣습니다.
+- **런타임 로드:** `FINFLOW_BUCKET`을 설정하면 앱이 GCS 스냅샷을 5분 간격으로 확인합니다. 새 세대가 있으면 임시 폴더에 내려받아 검증한 뒤 적용합니다.
+
+과거 빌드 실패 원인이었던 `COPY data/chroma`는 `data/chroma/.gitkeep`과 `.dockerignore` 수정으로 보완했습니다. 다만 실제 빌드와 Cloud Run 동작은 다시 확인하지 않았습니다. Gemini 키는 Secret Manager 같은 런타임 주입을 전제로 합니다. Cloud Run의 로컬 변경은 영구 저장으로 간주하지 않습니다.
 
 ## 남은 설계 판단
 
-- 질문이 금융용어·뉴스·주가 중 어디로 가는지 현재 앱의 라우팅 확인
-- 뉴스가 RAG 근거인지 보조 링크인지 UI와 응답에서 명확히 표시
+- 현재 앱은 질문마다 금융용어와 뉴스를 모두 검색하고, 주가는 조회하지 않음. 질문 유형별 라우팅이 필요한지 결정
+- 뉴스 검색 결과는 프롬프트와 화면 출처에 함께 쓰임. 답변에서 용어 근거와 뉴스 근거를 구분해 보여 주는지 확인
 - 근거가 부족하면 답변을 보류하는 조건 정의
 - 벡터 데이터·모델·청킹 설정의 버전과 생성 일자 함께 기록
 - FastAPI는 필요성이 확인되기 전까지 필수 구성으로 추가하지 않음
