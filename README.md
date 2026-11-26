@@ -1,112 +1,121 @@
 # FinFlow
 
-### 금융 입문자가 용어의 뜻에서 뉴스의 맥락까지 이해하도록 돕는 금융 지식 검색 프로젝트
+### 금융 입문자가 용어의 뜻에서 뉴스의 맥락까지 한 번에 이해하도록 돕는 금융 지식 검색 서비스
 
-**차가원 · 개인 프로젝트 · BDAI 데이터 엔지니어링 부트캠프 기반**
-Python · GCS · BigQuery · Sentence Transformers · ChromaDB · Gemini · Streamlit
+**차가원 · 개인 프로젝트**
+Python · GCS · BigQuery · Sentence Transformers · ChromaDB · Gemini · Streamlit · Cloud Run
 
-금융 뉴스를 읽다가 낯선 용어를 만나면 사전에서 뜻을 찾고 다시 기사로 돌아가야 합니다. FinFlow는 한국은행 금융용어를 검색 근거로 활용해 쉬운 설명을 제공하고, 관련 뉴스와 저장된 주가를 함께 탐색하는 서비스를 목표로 합니다. 대상 사용자는 대학생·사회초년생이며, 문제와 사용자 가치는 아직 사용자 조사로 검증하기 전의 가설입니다.
+## 1. 해결하려는 문제와 핵심 기능
 
-**현재 공개 버전:** 최신 FinFlow 앱, 뉴스 파이프라인, Airflow DAG, 배포 설정이 [finflow/](finflow/README.md)에 공개돼 있습니다(2026-11-22 main 반영). 초기 수집·적재·임베딩 실습 코드는 주차별 폴더에 있습니다. 벡터 DB 같은 생성 데이터는 Git에 넣지 않으므로, 앱을 실행하려면 먼저 데이터를 준비해야 합니다.
+금융 뉴스를 읽다가 낯선 용어를 만나면 사전에서 뜻을 찾고 다시 기사로 돌아가야 합니다. FinFlow에 질문하면 한국은행 금융용어를 근거로 한 쉬운 설명과, 그 용어가 쓰인 최근 뉴스를 출처와 함께 한 화면에서 볼 수 있습니다. 대상 사용자는 대학생과 사회초년생입니다. 이 문제와 사용자 가치는 아직 사용자 조사로 검증하지 않은 가설입니다.
 
-[FinFlow 앱](finflow/README.md) · [프로젝트 사례 정리](docs/portfolio.md) · [실행 안내](docs/reproduction.md) · [평가 기록](docs/evaluation.md) · [개인 기여와 다음 작업](docs/contribution-and-roadmap.md)
-
-## 현재 상태 (2026-11-22 기준)
-
-| 구분 | 내용 |
+| 사용자 상황 | FinFlow의 동작 |
 |---|---|
-| **구현 완료** (코드 공개) | Streamlit 앱(`finflow/app_ui.py`), 금융용어 벡터 검색과 뉴스 하이브리드 검색을 거쳐 Gemini로 답변 생성(`finflow/src/`), 뉴스 수집부터 ChromaDB 스냅샷까지 파이프라인(`finflow/scripts/`), Airflow DAG, Dockerfile과 Cloud Build 설정, 데이터 준비 상태 판단, 스냅샷 안전 압축 해제 |
-| **테스트 완료** (자동 테스트) | `finflow/tests/` 30개 통과. 데이터 준비 상태 판단, 스냅샷 압축 해제 보안, Streamlit 화면(AppTest). GCS는 mock을 쓰고 Gemini는 호출하지 않음 |
-| **미검증** | Docker 빌드와 실행, 실제 GCS 스냅샷 다운로드, Cloud Run 배포, 질문 제출부터 Gemini 답변까지의 전체 흐름, Airflow scheduler 정기 실행, 검색·답변 품질 |
-| **향후 계획** | 금융용어 생성 스크립트(PDF 파싱부터 ChromaDB 적재까지) 반영, 홈 화면 고정 수치 제거, 주가 조회의 앱 연결 여부 결정, 고정 질문 평가 세트 |
+| “가계부실위험지수가 뭐야?” | 금융용어 근거를 검색해 쉬운 설명과 함께 표시 |
+| 용어가 뉴스에서 어떻게 쓰이는지 궁금함 | 최근 7일 기사 중 관련 기사의 제목·요약·원문 링크를 표시 |
+| 답변을 믿어도 되는지 확인하고 싶음 | 답변에 쓴 금융용어와 기사를 출처로 함께 표시 |
 
-## 사용자 문제와 핵심 경험
+“최근”, “오늘”처럼 최신 정보를 묻는 질문에서는 최근 기사가 앞에 오도록 순위를 보정합니다. 주가 조회는 실험 코드(`finflow/experiments/stock_pipeline/`)만 있고 앱에는 연결하지 않았습니다.
 
-| 사용자 상황 | 목표 동작 | 제공하려는 가치 |
-|---|---|---|
-| “가계부실위험지수가 뭐야?” | 용어 근거를 검색하고 쉬운 설명과 함께 표시 | 설명을 출처와 함께 확인 |
-| 용어가 뉴스에서 어떻게 쓰이는지 궁금함 | 관련 기사 제목·요약·원문 링크 제공 | 개념과 실제 맥락 연결 |
-| 특정 종목의 수치를 확인하고 싶음 | 저장된 주가를 SQL로 조회하고 기준일 표시 | 숫자와 설명의 역할 구분 |
+## 2. 현재 서비스와 리디자인 화면
 
-핵심 검증 시나리오는 **질문 → 관련 용어 근거 → 쉬운 설명 → 출처 확인**입니다. 공개된 앱 코드는 질문마다 금융용어와 뉴스를 함께 검색합니다. 두 결과를 모두 프롬프트에 넣어 답변을 만들고, 출처를 화면에 표시합니다. 다만 실제 질문을 넣어 답변까지 확인하는 전체 흐름은 아직 검증하지 않았습니다. 주가 조회는 현재 앱에 연결돼 있지 않습니다(실험 코드: `finflow/experiments/stock_pipeline/`).
+**서비스 URL:** https://finflow-app-742422896041.asia-northeast3.run.app
 
-## 코드에서 확인할 수 있는 작업
+2026-11-26 기준 Cloud Run 리비전 `finflow-app-00014-kos`(main `a09b759`)가 트래픽 100%를 받고 있습니다. 질문 하나에 Gemini API를 3번 호출하므로, 공개 URL로 질문하면 API 사용량이 발생합니다.
 
-| 작업 | 구현과 설계 판단 | 코드 |
-|---|---|---|
-| 금융 API 수집 | 금융위원회 응답 구조·페이지 수집·API resultCode 검사, 인증키 환경변수 분리 | [주가 수집기](de-bootcamp-week1/scripts/day1_stock_crawler.py) |
-| 적재 전 품질 검증 | 레코드 건수·필수 필드·종가와 거래량 숫자 검사 후 적재 | [검증 함수](de-bootcamp-week1/scripts/data_quality.py) · [업로더](de-bootcamp-week1/scripts/day2_upload_stock_to_gcp.py) |
-| 원본과 조회 데이터 분리 | GCS 원본 보관, BigQuery 수치 조회와 적재 이력 기록 | [1주차 기록](de-bootcamp-week1/README.md) |
-| 임베딩과 의미 검색 | 청크를 벡터화하고 코사인 유사도로 검색 | [임베딩](de-bootcamp-week2/scripts/day2_local_embedding.py) · [금융용어 검색](de-bootcamp-week1/scripts/fin_terms_query.py) |
-| RAG 앱 | 질문 분석 → 금융용어 벡터 검색·재정렬 → 뉴스 하이브리드 검색 → Gemini 답변, 근거 표시 | [RAG](finflow/src/rag.py) · [대시보드](finflow/app_ui.py) |
-| 뉴스 파이프라인 | 네이버 뉴스 수집 → GCS → BigQuery → 청킹 → 임베딩 → ChromaDB → GCS 스냅샷 | [전체 실행](finflow/scripts/pipelines/run_news_pipeline.py) · [DAG](finflow/dags/naver_news_pipeline_dag.py) |
-| 데이터 준비와 안전성 | 두 컬렉션의 존재 여부 검증, GCS 스냅샷 런타임 적용, 안전하지 않은 압축 항목 거부 | [스냅샷](finflow/src/news_snapshot.py) · [테스트](finflow/tests/) |
+![리디자인 검색 결과 화면](https://github.com/user-attachments/assets/a9e7eccc-0875-4c83-a7e7-d726ea5dd289)
 
-현재 주가 수집기의 수집 직후 검증 호출은 주석 처리되어 있고, 업로더에서 검증합니다. 주가 적재는 `WRITE_APPEND`이며 재실행 중복 방지가 구현됐다고 주장하지 않습니다. 페르소나 검색 CLI와 금융용어 검색 CLI는 입력 형식이 다릅니다.
+1400px 화면에서 고정 예시 질문과 고정 예시 답변으로 렌더링한 캡처입니다. 실제 Gemini 응답을 캡처한 화면이 아닙니다. 리디자인 전후 비교와 900px·390px 화면은 [PR #11](https://github.com/gawounnx/finflow/pull/11)에 있습니다.
 
-## 확장 이력과 확인 수준
-
-다음은 기존 개발 문서에 정리된 과거 실행 기록입니다. 이번 문서 정리에서 클라우드 조회나 앱 E2E를 재실행한 결과가 아닙니다.
-
-| 개발 이력 | 기록된 결과 | 현재 공개 코드 상태 |
-|---|---|---|
-| 금융용어 확장 | 초기 69건 → PDF 기반 770건, BigQuery 770행 | PDF 파서·정제 스크립트 미반영 |
-| 금융용어 벡터 검색 | 2026-08-01 ChromaDB count 1,121 | 검색 코드 반영(`finflow/src/retriever.py`). 컬렉션 생성 로더는 미반영이며, 데이터는 GCS 스냅샷으로 복원 |
-| 뉴스 수집·중복 처리 | 최초 125건, 동일 입력 재실행 신규 0건, 후속 누적 183건 | 수집·적재·청킹·임베딩·적재 코드 반영(`finflow/scripts/`). 수치는 재측정하지 않음 |
-| 자동화와 서비스 | 뉴스 DAG 테스트·Streamlit RAG·Cloud Run 배포 기록 | 앱·DAG·Dockerfile·Cloud Build 설정 반영. 컨테이너 빌드와 Cloud Run은 미검증 |
-
-데이터 건수는 검색 정확도나 사용자 효과를 의미하지 않습니다. 실행 조건과 수치별 한계는 [평가 기록](docs/evaluation.md), 변화 과정은 [개발 이력](docs/development-history.md)에 정리했습니다.
-
-## 구조와 기술 선택
-
-FinFlow 앱과 뉴스 파이프라인의 데이터 흐름입니다([finflow/](finflow/README.md)).
+## 3. 실제 데이터 흐름
 
 ```mermaid
 flowchart TD
-    N["네이버 뉴스 API"] --> R["수집·검증 JSON"]
-    R --> G["GCS 원본"]
-    R --> B["BigQuery financial_news"]
-    B --> K["청킹·임베딩"]
-    K --> C["ChromaDB financial_news"]
-    T["금융용어 (GCS 스냅샷으로 복원)"] --> C2["ChromaDB financial_terms"]
-    C --> S["GCS ChromaDB 스냅샷"]
-    C2 --> S
-    S --> A["Streamlit 앱"]
-    Q["사용자 질문"] --> A
-    A --> L["Gemini 답변 + 근거"]
+    SCH["Cloud Scheduler<br/>매일 08·12·18시 KST"] --> JOB["Cloud Run Job<br/>finflow-news-job"]
+    JOB --> N["네이버 뉴스 API 수집·검증"]
+    N --> G["GCS 원본 JSON"]
+    N --> B["BigQuery 뉴스 테이블<br/>(article_id 중복 제외)"]
+    B --> K["청킹: 최근 7일 기사, 실행당 최대 2,000건"]
+    K --> E["임베딩"]
+    E --> CN["ChromaDB financial_news<br/>(7일 보관)"]
+    T["ChromaDB financial_terms<br/>(기존 스냅샷에서 유지)"] --> S
+    CN --> S["GCS 스냅샷 latest.tar.gz"]
+    S -->|최대 5분 간격으로 새 스냅샷 확인| APP["Streamlit 앱 (Cloud Run)"]
+    Q["사용자 질문"] --> APP
+    APP --> QA["① Gemini 질문 분석"]
+    QA --> TS["금융용어 벡터·키워드 검색"]
+    TS --> RR["② Gemini 재정렬"]
+    QA --> NS["뉴스 하이브리드 검색<br/>(최근 의도 시 최신 가산점)"]
+    RR --> ANS["③ Gemini 답변 + 출처 표시"]
+    NS --> ANS
 ```
 
-초기 실습 코드(주차별 폴더)의 흐름은 다음과 같습니다. 주가 API → 검증 → GCS 원본 → BigQuery 시세로 이어지고, 텍스트 청크 → 로컬 임베딩 JSON → 코사인 유사도 검색으로 이어집니다.
+- **역할 분리:** GCS에 원본을 보관하고, BigQuery로 정형 조회와 중복 제외를 처리합니다. ChromaDB는 의미 검색에, GCS 스냅샷은 앱과 Job 사이의 데이터 전달에 씁니다.
+- **안전 장치:** 스냅샷은 두 컬렉션이 모두 있고 비어 있지 않을 때만 업로드합니다. 내려받을 때는 경로 탈출과 링크 항목을 거부하고, 검증에 실패하면 기존 데이터를 그대로 둡니다.
+- **금융용어:** 앱은 GCS 스냅샷에 있는 금융용어 컬렉션을 씁니다. PDF 파싱부터 컬렉션 생성까지의 스크립트는 [PR #6](https://github.com/gawounnx/finflow/pull/6)에서 정리 중이며 아직 main에 없습니다.
+- **Airflow DAG**(`finflow/dags/`)에는 수집 → 검증 → GCS → BigQuery 경로가 있습니다. 운영 정기 실행은 위의 Cloud Scheduler와 Cloud Run Job이 맡습니다.
 
-- **GCS / BigQuery:** 원본 재처리와 정형 데이터 SQL 조회의 역할을 분리합니다.
-- **ChromaDB:** 금융용어와 뉴스 두 컬렉션을 의미 검색에 씁니다. 앱은 두 컬렉션이 모두 있어야 검색을 허용합니다.
-- **Streamlit / Gemini:** 질문 분석, 재정렬, 근거 기반 답변을 화면에 보여 줍니다.
-- **Airflow / Cloud Run Job:** DAG는 수집 → 검증 → GCS → BigQuery를 실행합니다. Cloud Run Job용 파이프라인은 ChromaDB 스냅샷 갱신까지 실행합니다. 두 경로의 장기 자동 운영은 검증 전입니다.
+설계 대안과 운영 부담은 [아키텍처·기술 결정](docs/architecture.md)에 정리했습니다.
 
-대안과 운영 부담은 [아키텍처·기술 결정](docs/architecture.md)을 참고하세요.
+## 4. 확인된 구현·검증 결과와 남은 한계
 
-## 실행과 시연
+아래는 PR 기록과 배포 기록으로 확인되는 내용입니다. 검색 정확도와 사용자 효과는 아직 측정하지 않았으므로 성과로 적지 않습니다.
 
-처음 실행하는 경우 [실행·재현 안내](docs/reproduction.md)와 [FinFlow 앱 안내](finflow/README.md)를 확인하세요. 앱은 clone 후 의존성을 설치하고 ChromaDB 데이터를 준비하면 실행할 수 있습니다. 데이터는 GCS 스냅샷으로 받으며 GCS 읽기 권한이 필요합니다. 데이터가 없으면 앱이 준비 방법을 안내합니다.
+| 구분 | 확인 내용 | 근거 |
+|---|---|---|
+| 배포 | Cloud Build로 이미지를 만들고, 트래픽 0% 태그 URL에서 검증한 뒤 전환. 현재 `finflow-app-00014-kos`가 100%, 이전 리비전은 롤백용으로 보관 | 2026-11-26 배포 기록 |
+| 배포 앱의 Gemini 전체 흐름 | 운영 앱(리비전 `00010-buq`)에서 실제 질문 1건을 제출. 오류 없이 답변했고, 인용한 기사 3건이 모두 스냅샷에 있으며 원문 링크가 응답함. 배포 전 로컬 검증에서는 Gemini 호출 3회가 모두 200 | 2026-11-26 배포 기록, [PR #9](https://github.com/gawounnx/finflow/pull/9) |
+| 뉴스 정기 갱신 | 메모리 초과로 멈췄던 뉴스 Job을 7일 증분 처리로 복구. 11/26 Job 실행 2회 성공, Scheduler 하루 3회 운영 중 | [PR #5](https://github.com/gawounnx/finflow/pull/5), Cloud Run Job 실행 이력 |
+| 앱 수정 | 첫 스냅샷 즉시 확인, 검색 폼 제출, 실패 시 이전 답변 제거, 갱신 상태를 운영 일정 기준으로 표시 | [PR #8](https://github.com/gawounnx/finflow/pull/8), [PR #10](https://github.com/gawounnx/finflow/pull/10) |
+| 리디자인 | Chrome 900px·390px에서 가로 넘침 없음. 배포 후 운영 URL에서 새 화면과 갱신 표시 확인(이때는 Gemini 호출 없음) | [PR #11](https://github.com/gawounnx/finflow/pull/11) |
+| 자동 테스트 | 오프라인 테스트 185개 통과(Streamlit 1.67). GCS·BigQuery·Gemini는 mock이나 가짜 응답으로 대체. 회귀 테스트가 수정 전 코드에서 실패하는 것도 확인 | PR #11 최종 커밋 `1b3df82` 기록 |
+
+테스트 개수는 코드 경로를 확인한 범위일 뿐, 답변 품질을 나타내지 않습니다.
+
+**남은 한계**
+
+- 검색·답변 품질은 정량 평가 전입니다. 운영 앱에서 실제 Gemini로 확인한 질문은 1건입니다.
+- 관련 뉴스가 없을 때 “없다”고 안내하는지는 실제 Gemini로 확인하지 못했습니다.
+- 제목에 검색 키워드가 모두 들어간 옛 기사는 “최근” 질문에서도 앞설 수 있습니다.
+- 11/23~11/25 뉴스는 Scheduler가 멈춰 있던 기간이라 비어 있습니다.
+- 금융용어 생성 스크립트는 main에 아직 없습니다(PR #6).
+
+## 5. 실행 방법
+
+앱은 clone 후 의존성을 설치하고 ChromaDB 데이터를 준비하면 로컬에서 실행할 수 있습니다. 데이터는 GCS 스냅샷으로 받으므로 GCS 읽기 권한이 필요합니다. 데이터가 없으면 앱이 준비 방법을 안내합니다.
 
 ```bash
 cd finflow
 python -m pip install -r requirements-dev.txt
-cp .env.example .env                                   # 값 채우기
+cp .env.example .env                                     # 값 채우기
 python scripts/vectorstores/download_chroma_snapshot.py  # GCS 권한 필요
 streamlit run app_ui.py
-python -m pytest tests -v                              # 자동 테스트 (데이터·인증 불필요)
+python -m pytest tests -q                                # 자동 테스트 (데이터·인증·Gemini 키 불필요)
 ```
 
-[과거 Cloud Run 배포 주소](https://finflow-app-742422896041.asia-northeast3.run.app)는 2026-08-01 기록의 주소입니다. 현재 가용성과 질문·응답은 재검증 전이며 검증된 라이브 데모로 표시하지 않습니다.
+환경 변수, 데이터 준비, 컨테이너 빌드와 배포 설정은 [FinFlow 앱 안내](finflow/README.md)와 [실행·재현 안내](docs/reproduction.md)에 있습니다.
+
+## 6. 개발 범위와 개인 기여
+
+FinFlow는 차가원이 금융 입문자의 질문과 근거 확인 경험을 중심으로 기획·개발·운영하는 개인 프로젝트입니다. 초기 수집·적재·임베딩 구조는 BDAI 데이터 엔지니어링 부트캠프 실습에서 출발했고, 실습 코드는 [1주차](de-bootcamp-week1/README.md)·[2주차](de-bootcamp-week2/README.md) 폴더에 있습니다.
+
+| 영역 | 수행한 작업 | 관련 코드와 기록 |
+|---|---|---|
+| 금융 지식 검색 | 한국은행 금융용어를 근거로 검색하고, Gemini로 질문 분석·재정렬·답변 생성 | [finflow/src/](finflow/src/) · [개발 이력](docs/development-history.md) |
+| 뉴스 연계 | 금융 뉴스 하이브리드 검색, 최근 소식 의도에 따른 순위 보정, 기사 날짜·원문 링크 표시 | [뉴스 검색](finflow/src/news_retriever.py) · [RAG](finflow/src/rag.py) |
+| 사용자 화면 | 검색 폼, 답변과 출처 표시, 모바일 화면, 실패 시 이전 답변 제거, 갱신 상태 안내 | [사용자 화면](finflow/app_ui.py) · [스타일](finflow/styles/main.css) |
+| 데이터 운영 | 뉴스 수집부터 스냅샷 게시까지의 파이프라인, 7일 증분 처리, 안전한 스냅샷 교체 | [finflow/scripts/](finflow/scripts/) |
+| 배포·검증 | Cloud Build와 Cloud Run 배포, 태그 URL 확인 후 트래픽 전환, 회귀 테스트와 브라우저 검증 | [앱 안내](finflow/README.md) · [테스트](finflow/tests/) |
+
+AI 도구의 도움과 직접 수행한 범위는 실제 작업 내역에 맞춰 설명합니다. 참고 자료와 세부 기여 범위는 [개인 기여와 다음 작업](docs/contribution-and-roadmap.md)에 정리했습니다.
 
 ## 다음 검증 목표
 
-1. 공개된 `finflow/` 소스로 새 환경과 컨테이너에서 핵심 시나리오(질문 → 근거 → 답변)를 재현합니다.
-2. 고정 질문 15~20개로 관련 근거 top-5 포함 여부, 답변·근거 일치, 모호한 질문과 근거 부족 대응을 평가합니다.
-3. 같은 데이터·모델·질문 조건에서 한 가지 변경의 효과와 응답 시간을 비교합니다.
+1. 고정 질문 15~20개로 관련 근거 top-5 포함 여부, 답변과 근거의 일치, 모호한 질문과 근거가 부족한 질문의 처리를 평가합니다.
+2. 같은 데이터·모델·질문 조건에서 한 가지씩 바꿔 효과와 응답 시간을 비교합니다.
+3. 금융용어 생성 스크립트(PR #6)를 main에 반영해 데이터를 처음부터 재현할 수 있게 합니다.
 
-## 문서와 학습 기록
+## 문서
 
 | 읽는 목적 | 문서 |
 |---|---|
@@ -117,7 +126,4 @@ python -m pytest tests -v                              # 자동 테스트 (데�
 | 측정 결과와 평가 계획 | [평가 기록](docs/evaluation.md) |
 | 실패 원인과 조치 | [트러블슈팅](docs/troubleshooting.md) |
 | 직접 확장한 부분과 출처 | [개인 기여](docs/contribution-and-roadmap.md) |
-| 과거 과정과 원문 기록 | [개발 이력](docs/development-history.md) · [이전 README](docs/archive/bootcamp-readme.md) |
-| 기반 실습 | [1주차](de-bootcamp-week1/README.md) · [2주차](de-bootcamp-week2/README.md) |
-
-부트캠프 기반 구조와 개인 금융 도메인 확장을 구분합니다. AI 도구 도움과 직접 수행 범위는 실제 작업 내역에 맞춰 설명하며, 확인되지 않은 정확도·비용 절감·사용자 수를 성과로 기재하지 않습니다.
+| 과거 과정과 원문 기록 | [개발 이력](docs/development-history.md) |
