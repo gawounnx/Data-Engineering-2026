@@ -7,6 +7,7 @@ from typing import Any
 from .llm import generate_answer
 from .news_retriever import (
     format_news_context,
+    has_recency_intent,
     search_financial_news,
 )
 from .prompt import build_rag_prompt
@@ -208,9 +209,15 @@ def ask_finflow(
 
     search_results = rerank_result["results"]
 
+    # 질문 분석이 검색어에서 "최근" 같은 표현을 빼더라도
+    # 사용자 질문의 최신 소식 의도는 유지한다.
     news_results = search_financial_news(
         query=news_query,
         top_k=news_top_k,
+        prefer_recent=(
+            has_recency_intent(clean_query)
+            or has_recency_intent(news_query)
+        ),
     )
 
     prompt = build_rag_prompt(

@@ -30,6 +30,22 @@ MODEL_NAME = "kekeappa/kor-static-embedding-128"
 # 뉴스 파이프라인(load_news_to_chromadb.py)이 남기는 보관 기간과 같은 값을 쓴다.
 DEFAULT_NEWS_RETENTION_DAYS = 7
 
+# "최근 뉴스" 같은 질문에서 최신 기사가 키워드 점수에 밀리지 않도록 하는 설정.
+# 키워드 1개당 최대 8점(제목 5 + 요약 2 + 수집어 1)이라 키워드가 많을수록 점수 차가
+# 커지므로, 최신 가산점 상한도 키워드 수에 비례해 키운다.
+RECENCY_INTENT_KEYWORDS = (
+    "최근", "최신", "요즘", "근래", "방금", "오늘", "어제", "현재", "이번주", "금주",
+)
+RECENT_INTENT_BONUS_PER_KEYWORD = 2.0
+RECENT_INTENT_MIN_BONUS = 6.0
+RECENT_INTENT_HALF_LIFE_DAYS = 1.5
+
+
+def has_recency_intent(query: str) -> bool:
+    """질문이 최신 소식을 원하는지(최근·오늘 등) 판단한다."""
+    normalized = str(query or "").replace(" ", "")
+    return any(keyword in normalized for keyword in RECENCY_INTENT_KEYWORDS)
+
 
 def get_news_retention_days() -> int:
     """뉴스 제공 범위(일). NEWS_RETENTION_DAYS가 비었거나 잘못되면 기본값."""
@@ -452,8 +468,15 @@ def calculate_keyword_score(
 def calculate_recency_score(
     published_at: str | None,
     search_days: int,
+    prefer_recent: bool = False,
+    keyword_count: int = 0,
 ) -> float:
-    """검색 기간 안에서 최신 기사에 가점을 준다."""
+    """검색 기간 안에서 최신 기사에 가점을 준다.
+
+    기본: 0~3점, 기간에 걸쳐 선형 감소.
+    prefer_recent(최근 소식 질문): 상한을 키워드 수에 비례해 키우고
+    RECENT_INTENT_HALF_LIFE_DAYS마다 절반으로 줄여, 같은 주제의 더 새 기사를 앞세운다.
+    """
     published = parse_published_at(
         published_at
     )
@@ -473,6 +496,13 @@ def calculate_recency_score(
 
     if age_days > search_days:
         return -100.0
+
+    if prefer_recent:
+        max_bonus = max(
+            RECENT_INTENT_MIN_BONUS,
+            RECENT_INTENT_BONUS_PER_KEYWORD * keyword_count,
+        )
+        return max_bonus * 0.5 ** (age_days / RECENT_INTENT_HALF_LIFE_DAYS)
 
     return max(
         0.0,
@@ -567,8 +597,12 @@ def search_keyword_candidates(
     articles: list[dict[str, Any]],
     keywords: list[str],
     candidate_count: int = 30,
+    newest_first: bool = False,
 ) -> list[dict[str, Any]]:
-    """JSON 뉴스에서 키워드 일치 후보를 찾는다."""
+    """JSON 뉴스에서 키워드 일치 후보를 찾는다.
+
+    newest_first=True면 키워드가 하나라도 맞는 기사 중 최신순으로 고른다.
+    """
     candidates: list[dict[str, Any]] = []
 
     for article in articles:
@@ -587,17 +621,30 @@ def search_keyword_candidates(
             }
         )
 
-    candidates.sort(
-        key=lambda item: (
-            item["keyword_score"],
-            parse_published_at(
-                item["article"].get(
-                    "published_at"
-                )
+    if newest_first:
+        candidates.sort(
+            key=lambda item: (
+                parse_published_at(
+                    item["article"].get(
+                        "published_at"
+                    )
+                ),
+                item["keyword_score"],
             ),
-        ),
-        reverse=True,
-    )
+            reverse=True,
+        )
+    else:
+        candidates.sort(
+            key=lambda item: (
+                item["keyword_score"],
+                parse_published_at(
+                    item["article"].get(
+                        "published_at"
+                    )
+                ),
+            ),
+            reverse=True,
+        )
 
     return candidates[:candidate_count]
 
@@ -606,8 +653,12 @@ def search_financial_news(
     query: str,
     top_k: int = 5,
     news_path: str | Path = DEFAULT_NEWS_PATH,
+    prefer_recent: bool | None = None,
 ) -> list[dict[str, Any]]:
-    """금융뉴스를 하이브리드 방식으로 검색한다."""
+    """금융뉴스를 하이브리드 방식으로 검색한다.
+
+    prefer_recent가 None이면 query의 표현(최근·오늘 등)으로 판단한다.
+    """
     clean_query = query.strip()
 
     if not clean_query:
@@ -649,6 +700,18 @@ def search_financial_news(
         candidate_count=VECTOR_CANDIDATE_COUNT,
     )
 
+    if prefer_recent is None:
+        prefer_recent = has_recency_intent(clean_query)
+
+    if prefer_recent:
+        # 키워드 점수 순 후보만으로는 새 기사가 빠질 수 있어 최신순 후보를 더한다.
+        keyword_candidates = keyword_candidates + search_keyword_candidates(
+            articles=articles,
+            keywords=keywords,
+            candidate_count=VECTOR_CANDIDATE_COUNT,
+            newest_first=True,
+        )
+
     scored_articles: list[dict[str, Any]] = []
     seen_article_ids: set[str] = set()
 
@@ -672,6 +735,8 @@ def search_financial_news(
         recency_score = calculate_recency_score(
             published_at=published_at,
             search_days=search_days,
+            prefer_recent=prefer_recent,
+            keyword_count=len(keywords),
         )
 
         if recency_score < 0:
@@ -817,6 +882,8 @@ def search_financial_news(
         recency_score = calculate_recency_score(
             published_at=published_at,
             search_days=search_days,
+            prefer_recent=prefer_recent,
+            keyword_count=len(keywords),
         )
 
         if recency_score < 0:
