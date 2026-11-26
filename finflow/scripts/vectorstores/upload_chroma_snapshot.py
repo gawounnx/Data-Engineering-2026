@@ -77,20 +77,16 @@ def upload_snapshot(
 
 def main() -> None:
     """ChromaDB 스냅샷 생성 및 업로드를 실행한다."""
-    bucket_name = os.getenv(
-        "FINFLOW_BUCKET",
-        DEFAULT_BUCKET_NAME,
-    ).strip()
+    # 환경 변수가 없거나 빈 값이면 기본값을 사용한다.
+    bucket_name = (
+        os.getenv("FINFLOW_BUCKET", "").strip()
+        or DEFAULT_BUCKET_NAME
+    )
 
-    object_name = os.getenv(
-        "CHROMA_SNAPSHOT_OBJECT",
-        DEFAULT_OBJECT_NAME,
-    ).strip()
-
-    if not bucket_name:
-        raise ValueError(
-            "FINFLOW_BUCKET이 비어 있습니다."
-        )
+    object_name = (
+        os.getenv("CHROMA_SNAPSHOT_OBJECT", "").strip()
+        or DEFAULT_OBJECT_NAME
+    )
 
     create_snapshot()
 

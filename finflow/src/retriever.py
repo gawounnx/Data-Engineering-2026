@@ -386,7 +386,10 @@ def search_by_keyword(
                     0,
                 ),
                 "document": safe_document,
-                "distance": None,
+                # 벡터 결과(similarity = 1 - distance)와 같은 척도로 맞춘다.
+                # None이면 rag.merge_search_results에서 맨 뒤로 밀려
+                # 정확히 일치한 용어가 후보에서 빠질 수 있다.
+                "distance": 1.0 - keyword_score,
                 "similarity": keyword_score,
                 "metadata": safe_metadata,
                 "search_type": "keyword",
