@@ -166,7 +166,7 @@ python -m pytest tests -v
 
 ## 4. 컨테이너 빌드와 배포
 
-> 이 문서의 컨테이너 빌드·실행과 Cloud Run 동작은 아직 실제로 검증하지 않았습니다. 정적 점검과 로컬 Python 실행만 확인했습니다.
+> 2026-11-26에 Cloud Build로 앱 이미지를 빌드해 Cloud Run에 배포했습니다. 새 리비전은 트래픽 0% 태그 URL에서 확인한 뒤 전환했습니다(현재 `finflow-app-00014-kos`). 뉴스 Job은 Cloud Scheduler `finflow-news-daily`(매일 08·12·18시 KST)로 실행합니다. 검증 범위는 [루트 README](../README.md#4-확인된-구현검증-결과와-남은-한계)에 정리했습니다.
 
 `Dockerfile.app`은 `COPY data/chroma ./data/chroma`로 빌드 시점의 로컬 ChromaDB를 이미지에 넣습니다. 빌드 방법은 두 가지입니다.
 
