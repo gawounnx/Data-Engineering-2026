@@ -87,7 +87,7 @@ def isolated(tmp_path, monkeypatch):
         "_current_status",
         news_snapshot.NewsSnapshotStatus(updated_at=None, generation=None),
     )
-    monkeypatch.setattr(news_snapshot, "_last_checked_at", 0.0)
+    monkeypatch.setattr(news_snapshot, "_last_checked_at", None)
     monkeypatch.setattr(retriever, "CHROMA_PATH", local_chroma)
     monkeypatch.setattr(news_retriever, "CHROMA_PATH", local_chroma)
     monkeypatch.setattr(
