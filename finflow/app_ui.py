@@ -982,6 +982,11 @@ def render_search(status: NewsSnapshotStatus) -> None:
                 },
             )
 
+            # 새 질문을 제출하면 이전 결과부터 비운다.
+            # 이 질문이 실패했을 때 이전 질문의 답변·출처가
+            # 이 질문의 결과처럼 아래에 남지 않게 한다.
+            st.session_state.search_result = None
+
             try:
                 with st.spinner(
                     "질문을 분석하고 금융 정보를 검색하고 있습니다."
