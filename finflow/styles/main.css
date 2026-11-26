@@ -16,10 +16,8 @@
   --ff-blue: #3182f6;
   --ff-blue-strong: #1b64da;
   --ff-blue-weak: #e8f3ff;
-  --ff-action: #1b64da; /* 버튼 바탕: 흰 글씨 대비 5.4:1 */
   --ff-action-hover: #1957c2; /* 6.6:1 */
   --ff-action-active: #164eae;
-  --ff-action-disabled: #6b7684; /* 4.6:1 */
   --ff-green: #03b26c;
   --ff-orange: #fe9800;
   --ff-red: #f04452;
@@ -59,6 +57,10 @@
 [data-testid='stCaptionContainer'] {
   color: var(--ff-text-3);
   font-size: 13px;
+}
+
+.st-key-preview_notice [data-testid='stCaptionContainer'] p {
+  color: var(--ff-text-2);
 }
 
 /* ---------- 사이드바 ---------- */
@@ -163,20 +165,22 @@ section[data-testid='stSidebar'] label[data-testid='stRadioOption'][data-selecte
 }
 
 .ff-status {
-  padding: 16px 20px;
-  border-radius: var(--ff-radius-panel);
-  background: var(--ff-surface);
+  max-inline-size: 256px;
+  margin-inline-start: auto;
+  padding: 8px 12px;
+  border: 1px solid var(--ff-line);
+  border-radius: var(--ff-radius-control);
 }
 
 .ff-status-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .ff-dot {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   flex: none;
   border-radius: 50%;
   background: var(--ff-text-3);
@@ -187,8 +191,8 @@ section[data-testid='stSidebar'] label[data-testid='stRadioOption'][data-selecte
 .ff-status--error .ff-dot { background: var(--ff-red); }
 
 .ff-status-label {
-  color: var(--ff-text);
-  font-size: 15px;
+  color: var(--ff-text-2);
+  font-size: 13px;
   font-weight: 600;
 }
 
@@ -196,36 +200,34 @@ section[data-testid='stSidebar'] label[data-testid='stRadioOption'][data-selecte
 .ff-status--error .ff-status-label { color: var(--ff-red); }
 
 .ff-status-msg {
-  margin: 4px 0 12px;
+  margin: 2px 0 6px;
   color: var(--ff-text-2);
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1.5;
   word-break: keep-all;
 }
 
 .ff-status-rows {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   margin: 0;
-  padding-top: 12px;
-  border-top: 1px solid var(--ff-line-soft);
 }
 
 .ff-status-rows > div {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
+  gap: 8px;
+  font-size: 12px;
 }
 
 .ff-status-rows dt {
-  color: var(--ff-text-3);
+  color: var(--ff-text-2);
   white-space: nowrap;
 }
 
 .ff-status-rows dd {
   margin: 0;
-  color: var(--ff-text);
+  color: var(--ff-text-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap; /* 날짜와 시각을 한 줄로 */
 }
@@ -273,41 +275,40 @@ section[data-testid='stSidebar'] label[data-testid='stRadioOption'][data-selecte
   color: var(--ff-text-3);
 }
 
-/* 분석하기: 모든 상태에서 흰 글씨 */
-[data-testid='stFormSubmitButton'] button,
-[data-testid='stFormSubmitButton'] button:focus,
-[data-testid='stFormSubmitButton'] button:focus:not(:active) {
+/* 검색 제출 버튼과 Streamlit이 렌더링한 라벨에 같은 글자색을 적용한다. */
+.st-key-analyze_button [data-testid='stFormSubmitButton'] button,
+.st-key-analyze_button [data-testid='stFormSubmitButton'] button:focus {
+  --ff-submit-text: var(--ff-surface);
   min-height: 48px;
   border: none;
   border-radius: var(--ff-radius-control);
-  background: var(--ff-action);
-  color: #ffffff;
+  background: var(--ff-blue);
+  color: var(--ff-submit-text);
   font-size: 15px;
   font-weight: 600;
 }
 
-[data-testid='stFormSubmitButton'] button * {
-  color: #ffffff !important;
+.st-key-analyze_button [data-testid='stFormSubmitButton'] button p {
+  color: var(--ff-submit-text);
 }
 
-[data-testid='stFormSubmitButton'] button:hover {
+.st-key-analyze_button [data-testid='stFormSubmitButton'] button:enabled:hover {
   background: var(--ff-action-hover);
-  color: #ffffff;
 }
 
-[data-testid='stFormSubmitButton'] button:active {
+.st-key-analyze_button [data-testid='stFormSubmitButton'] button:enabled:active {
   background: var(--ff-action-active);
-  color: #ffffff;
 }
 
-[data-testid='stFormSubmitButton'] button:focus-visible {
+.st-key-analyze_button [data-testid='stFormSubmitButton'] button:focus-visible {
   outline: 3px solid rgba(49, 130, 246, 0.35);
   outline-offset: 2px;
 }
 
-[data-testid='stFormSubmitButton'] button:disabled {
-  background: var(--ff-action-disabled);
-  color: #ffffff;
+.st-key-analyze_button [data-testid='stFormSubmitButton'] button:disabled {
+  --ff-submit-text: var(--ff-text-2);
+  background: var(--ff-line);
+  color: var(--ff-submit-text);
 }
 
 /* ---------- 추천 질문 ---------- */
@@ -353,6 +354,7 @@ section[data-testid='stSidebar'] label[data-testid='stRadioOption'][data-selecte
 }
 
 .ai-answer-content p {
+  max-inline-size: 40em;
   margin: 0 0 14px;
   color: #333d4b;
   font-size: 16px;
@@ -533,7 +535,7 @@ section[data-testid='stSidebar'] label[data-testid='stRadioOption'][data-selecte
   }
 
   .ff-status {
-    margin-top: 8px;
+    margin: 8px 0 0;
   }
 
   .st-key-answer_card {

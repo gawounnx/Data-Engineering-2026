@@ -11,7 +11,7 @@ import re
 import pytest
 
 import app_ui
-from test_search_form import page_text, search_app  # noqa: F401  (fixture 재사용)
+from test_search_form import SUGGESTION, page_text, search_app  # noqa: F401  (fixture 재사용)
 
 TITLE_WITH_COMMA = "한은, 기준금리 3.00→3.25% 인상…성장률 올해 3.9·내년 4.1% 상향"
 EXAMPLE_RESULT = {
@@ -117,13 +117,27 @@ def test_compact_html_keeps_word_spaces_and_has_no_indented_lines():
     assert "</p><p>" in markup
 
 
-def test_answer_paragraphs_keep_highlight_tags_intact():
-    html = app_ui.render_answer_html(
-        "첫 문단\n\n기준금리는 정책금리입니다.", terms=["기준금리"]
+def test_answer_highlights_only_first_occurrence_across_paragraphs():
+    body = "기준금리와 ETF를 설명합니다.\n\n기준금리와 etf의 관계입니다."
+    markup = app_ui.render_answer_html(body, terms=["기준금리", "etf"])
+
+    assert markup.count('<mark class="financial-term-highlight">') == 2
+    assert "기준금리</mark>와" in markup
+    assert "ETF</mark>를" in markup
+    assert markup.endswith("</p><p>기준금리와 etf의 관계입니다.</p>")
+    unmarked = re.sub(r"</?mark[^>]*>", "", markup)
+    assert "\n\n".join(re.findall(r"<p>(.*?)</p>", unmarked)) == body
+
+
+def test_overlapping_terms_and_markup_are_rendered_safely():
+    markup = app_ui.render_answer_html(
+        "<통화정책>과 정책은 다릅니다.", terms=["정책", "통화정책"]
     )
 
-    assert html.startswith("<p>첫 문단</p><p><mark")
-    assert "mark class" not in re.sub(r"<mark class=", "", html)
+    assert markup == (
+        '<p>&lt;<mark class="financial-term-highlight">통화정책</mark>&gt;과 '
+        '<mark class="financial-term-highlight">정책</mark>은 다릅니다.</p>'
+    )
 
 
 def test_news_item_escapes_text_and_drops_unsafe_link():
@@ -162,10 +176,16 @@ def test_result_screen_shows_answer_then_sources(search_app):  # noqa: F811
     assert not at.exception
     shown = page_text(at)
 
-    assert "AI 답변" in shown
-    assert "최근 기준금리 관련 뉴스와 함께 설명해줘." in shown
+    assert '<p class="ff-eyebrow">답변한 질문</p>' in shown
+    assert '<h2 class="ff-answer-q">기준금리 질문</h2>' in shown
     assert "참고한 금융용어:" not in shown  # 출처 줄은 본문에서 분리
     assert [t.label for t in at.tabs] == ["금융용어 근거 3", "관련 뉴스 2"]
     # 답변이 인용한 용어 2개 + 기사 1개에 표시
     assert shown.count("답변에 사용") == 3
     assert any(e.label == "검색 과정 자세히 보기" for e in at.expander)
+
+    at.button(key=f"suggestion_{SUGGESTION}").click().run()
+
+    assert at.text_input(key="search_question").value == SUGGESTION
+    assert '<h2 class="ff-answer-q">기준금리 질문</h2>' in page_text(at)
+    assert spy.calls == ["기준금리 질문"]

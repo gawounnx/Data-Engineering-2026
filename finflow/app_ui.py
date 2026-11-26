@@ -415,44 +415,36 @@ def highlight_terms_in_answer(
     answer: str,
     terms: list[str],
 ) -> str:
-    """
-    답변에 실제로 등장한 금융용어만 강조합니다.
-
-    검색 근거에 용어가 있어도 답변 본문에 없으면
-    강제로 추가하거나 강조하지 않습니다.
-    """
+    """답변 본문에서 각 금융용어가 처음 나오는 곳만 강조합니다."""
     # Gemini가 강조용 Markdown을 반환해도 HTML 화면에 별표가 노출되지
     # 않도록 렌더링 전에 강조 구분자를 제거합니다.
     clean_answer = answer.replace("*", "")
-    safe_answer = html.escape(clean_answer)
-
     valid_terms = sorted(
-        {
-            term.strip()
-            for term in terms
-            if isinstance(term, str)
-            and len(term.strip()) >= 2
-            and term.strip().lower() in clean_answer.lower()
-        },
+        {term.strip() for term in terms if isinstance(term, str) and len(term.strip()) >= 2},
         key=len,
         reverse=True,
     )
+    if not valid_terms:
+        return html.escape(clean_answer).replace("\n", "<br>")
 
-    for term in valid_terms:
-        escaped_term = html.escape(term)
+    # 원문에서 겹치는 용어는 긴 쪽을 우선하고, 각 조각을 출력할 때 이스케이프한다.
+    pattern = re.compile("|".join(re.escape(term) for term in valid_terms), re.IGNORECASE)
+    seen: set[str] = set()
+    parts: list[str] = []
+    end = 0
+    for match in pattern.finditer(clean_answer):
+        parts.append(html.escape(clean_answer[end:match.start()]))
+        term = match.group()
+        key = term.casefold()
+        escaped = html.escape(term)
+        if key not in seen:
+            escaped = f'<mark class="financial-term-highlight">{escaped}</mark>'
+            seen.add(key)
+        parts.append(escaped)
+        end = match.end()
+    parts.append(html.escape(clean_answer[end:]))
 
-        safe_answer = re.sub(
-            re.escape(escaped_term),
-            (
-                '<mark class="financial-term-highlight">'
-                f"{escaped_term}"
-                "</mark>"
-            ),
-            safe_answer,
-            flags=re.IGNORECASE,
-        )
-
-    return safe_answer.replace("\n", "<br>")
+    return "".join(parts).replace("\n", "<br>")
 
 
 def extract_news_sources(result: Any) -> list[dict[str, Any]]:
@@ -507,6 +499,7 @@ def reset_search() -> None:
     """현재 질문과 검색 결과를 초기화합니다."""
     st.session_state.search_question = ""
     st.session_state.search_result = None
+    st.session_state.pop("answered_question", None)
 
 
 def compact_html(markup: str) -> str:
@@ -610,7 +603,7 @@ def render_answer_html(answer: str, terms: list[str]) -> str:
     return "".join(f"<p>{part}</p>" for part in paragraphs if part)
 
 
-def render_search_results(result: Any) -> None:
+def render_search_results(result: Any, *, question: str = "") -> None:
     """검색 결과: 답변 → 출처(금융용어·뉴스) → 검색 과정 순으로 보여줍니다."""
     query_analysis = extract_query_analysis(result)
     rerank_info = extract_rerank_info(result)
@@ -619,9 +612,10 @@ def render_search_results(result: Any) -> None:
     answer = extract_answer(result)
     reference_terms = extract_reference_terms(references)
     news_titles = [str(news.get("title", "")).strip() for news in news_sources]
-    question = (
-        str(result.get("query", "")).strip() if isinstance(result, dict) else ""
-    )
+    if not question and isinstance(result, dict):
+        saved_query = result.get("query")
+        if isinstance(saved_query, str):
+            question = saved_query.strip()
 
     body, cited_terms, cited_titles = split_answer_citations(
         answer=answer,
@@ -631,11 +625,11 @@ def render_search_results(result: Any) -> None:
 
     with st.container(key="answer_card"):
         st.markdown(
-            '<p class="ff-eyebrow">AI 답변</p>'
-            + (
+            (
+                '<p class="ff-eyebrow">답변한 질문</p>'
                 f'<h2 class="ff-answer-q">{html.escape(question)}</h2>'
                 if question
-                else ""
+                else '<p class="ff-eyebrow">AI 답변</p>'
             )
             + '<div class="ai-answer-content">'
             + render_answer_html(body, reference_terms)
@@ -970,6 +964,7 @@ def render_search(status: NewsSnapshotStatus) -> None:
             # 이 질문이 실패했을 때 이전 질문의 답변·출처가
             # 이 질문의 결과처럼 아래에 남지 않게 한다.
             st.session_state.search_result = None
+            st.session_state.pop("answered_question", None)
 
             try:
                 with st.spinner(
@@ -978,6 +973,7 @@ def render_search(status: NewsSnapshotStatus) -> None:
                     result = ask_finflow(cleaned_question)
 
                 st.session_state.search_result = result
+                st.session_state.answered_question = cleaned_question
 
                 references = extract_references(result)
                 news_sources = extract_news_sources(result)
@@ -1016,7 +1012,9 @@ def render_search(status: NewsSnapshotStatus) -> None:
     result = st.session_state.search_result
 
     if result is not None:
-        render_search_results(result)
+        render_search_results(
+            result, question=st.session_state.get("answered_question", "")
+        )
 
 
 def render_technology_stack() -> None:
@@ -1035,7 +1033,7 @@ def render_technology_stack() -> None:
     )
 
 
-def main() -> None:
+def main(*, preview: bool = False) -> None:
     """FinFlow Streamlit 애플리케이션을 실행합니다."""
     st.set_page_config(
         page_title="FinFlow",
@@ -1045,6 +1043,10 @@ def main() -> None:
     )
 
     load_css()
+
+    if preview:
+        with st.container(key="preview_notice"):
+            st.caption("예시 미리보기 · 답변과 뉴스는 고정 예시입니다.")
 
     pipeline_status = sync_latest_news_snapshot()
 
