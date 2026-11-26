@@ -1,0 +1,277 @@
+"""검색 화면 표시 규칙 테스트 (리디자인).
+
+검색·RAG·프롬프트 로직은 다루지 않고, 결과를 화면에 옮기는 도우미와 화면 구성만 확인한다.
+검색 함수는 고정 예시 결과를 돌려주는 대역이며 Gemini는 호출하지 않는다.
+"""
+
+from __future__ import annotations
+
+import re
+
+import pytest
+
+import app_ui
+from test_search_form import SUGGESTION, page_text, search_app  # noqa: F401  (fixture 재사용)
+
+TITLE_WITH_COMMA = "한은, 기준금리 3.00→3.25% 인상…성장률 올해 3.9·내년 4.1% 상향"
+EXAMPLE_RESULT = {
+    "query": "최근 기준금리 관련 뉴스와 함께 설명해줘.",
+    "answer": (
+        "한국은행 금융통화위원회는 기준금리를 3.25%로 인상했습니다.\n\n"
+        "기준금리는 정책금리입니다.\n\n"
+        "참고한 금융용어: 기준금리, 금융통화위원회\n"
+        f"참고한 뉴스: {TITLE_WITH_COMMA}"
+    ),
+    "sources": [
+        {"term": "기준금리", "document": "금융용어: 기준금리\n설명: 한국은행 금융통화위원회에서 결정하는 정책금리를 말한다."},
+        {"term": "통화정책·파급경로", "document": "금융용어: 통화정책·파급경로\n설명: 통화정책이 실물경제에 파급되는 경로."},
+        {"term": "금융통화위원회", "document": "금융용어: 금융통화위원회\n설명: 통화신용정책 최고 의사결정기구."},
+    ],
+    "news_sources": [
+        {
+            "title": TITLE_WITH_COMMA,
+            "summary": "뉴스 제목: …\n뉴스 내용: 한국은행이 기준금리를 인상했다.",
+            "published_at": "2026-11-26T01:20:00+00:00",
+            "category": "통화정책",
+            "original_url": "http://www.newstomato.com/ReadNews.aspx?no=1321923",
+        },
+        {
+            "title": "<script>alert(1)</script> 다음주 금융시장",
+            "summary": "다음 주 결정",
+            "published_at": "2026-11-21T00:27:00+00:00",
+            "category": "통화정책",
+            "original_url": "javascript:alert(1)",
+        },
+    ],
+    "query_analysis": {"intent": "최근 기준금리 동향", "news_query": "기준금리 인상"},
+    "rerank_info": {"reason": "정의가 직접적", "candidate_count": 10, "used_fallback": False},
+}
+
+
+# ---------- 도우미 ----------
+
+def test_split_answer_citations_keeps_titles_with_commas():
+    body, terms, titles = app_ui.split_answer_citations(
+        EXAMPLE_RESULT["answer"],
+        terms=["기준금리", "통화정책·파급경로", "금융통화위원회"],
+        news_titles=[TITLE_WITH_COMMA, "한은", "다른 기사"],
+    )
+
+    assert "참고한" not in body
+    assert body.endswith("기준금리는 정책금리입니다.")
+    assert terms == {"기준금리", "금융통화위원회"}
+    assert titles == {TITLE_WITH_COMMA}
+
+
+def test_unmatched_citation_line_stays_in_body():
+    body, terms, titles = app_ui.split_answer_citations(
+        "본문\n참고한 뉴스: 검색 결과에 없는 기사",
+        terms=[],
+        news_titles=["다른 기사"],
+    )
+
+    assert "참고한 뉴스: 검색 결과에 없는 기사" in body
+    assert titles == set()
+
+
+def test_citations_match_whole_items_and_keep_partially_matched_lines():
+    answer = (
+        "본문\n"
+        "**참고한 금융용어:** **기준금리**, 실질금리 전망\n"
+        f"참고한 뉴스: 미확인 기사, {TITLE_WITH_COMMA}, 증시 동향 추가 보도"
+    )
+    body, terms, titles = app_ui.split_answer_citations(
+        answer,
+        terms=["금리", "기준금리", "실질금리", "금융용어"],
+        news_titles=["한은", TITLE_WITH_COMMA, "증시 동향", "뉴스"],
+    )
+
+    assert body == answer
+    assert terms == {"기준금리"}
+    assert titles == {TITLE_WITH_COMMA}
+
+
+def test_citations_can_mix_comma_titles_and_other_confirmed_titles():
+    body, terms, titles = app_ui.split_answer_citations(
+        f"본문\n**참고한 뉴스**: {TITLE_WITH_COMMA}, 증시 동향",
+        terms=[],
+        news_titles=["한은", TITLE_WITH_COMMA, "증시 동향"],
+    )
+
+    assert body == "본문"
+    assert titles == {TITLE_WITH_COMMA, "증시 동향"}
+
+
+@pytest.mark.parametrize(
+    ("document", "term", "expected"),
+    [
+        ("금융용어: 기준금리 설명: 정책금리입니다.", "기준금리", "정책금리입니다."),
+        ("금융용어: 기준금리 정책금리입니다.", "기준금리", "정책금리입니다."),
+        (
+            "금융용어: 기준금리\n설명: 정책금리입니다.\n금융용어: 콜금리와 비교합니다.",
+            "기준금리",
+            "정책금리입니다. 금융용어: 콜금리와 비교합니다.",
+        ),
+        (
+            "금융용어: 기준금리\n설명: 설명: 정책금리입니다.",
+            "검색 결과 1",
+            "설명: 정책금리입니다.",
+        ),
+        (
+            "설명에서는 금융용어: 콜금리를 예로 듭니다.",
+            "기준금리",
+            "설명에서는 금융용어: 콜금리를 예로 듭니다.",
+        ),
+    ],
+)
+def test_term_description_only_removes_leading_source_headers(document, term, expected):
+    assert app_ui.format_term_description(document, term) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("2026-11-26T01:20:00+00:00", "2026.11.26 10:20"),
+        ("2026-11-26T01:20:00Z", "2026.11.26 10:20"),
+        ("2026-11-26", "2026-11-26"),  # 시간대가 없으면 원문 그대로
+        ("", ""),
+    ],
+)
+def test_format_published_at_in_kst(value, expected):
+    assert app_ui.format_published_at(value) == expected
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("https://news.example.com/a?b=1", "https://news.example.com/a?b=1"),
+        ("http://news.example.com", "http://news.example.com"),
+        ("javascript:alert(1)", ""),
+        ("//no-scheme.example.com", ""),
+        ("", ""),
+    ],
+)
+def test_safe_external_url_allows_only_http(value, expected):
+    assert app_ui.safe_external_url(value) == expected
+
+
+def test_compact_html_keeps_word_spaces_and_has_no_indented_lines():
+    markup = app_ui.compact_html(
+        """
+        <p>
+            함께 찾아
+            쉽게 설명해요
+        </p>
+        <p>b</p>
+        """
+    )
+
+    assert "\n" not in markup
+    assert "찾아 쉽게" in markup
+    assert "</p><p>" in markup
+
+
+def test_answer_highlights_only_first_occurrence_across_paragraphs():
+    body = "기준금리와 ETF를 설명합니다.\n\n기준금리와 etf의 관계입니다."
+    markup = app_ui.render_answer_html(body, terms=["기준금리", "etf"])
+
+    assert markup.count('<mark class="financial-term-highlight">') == 2
+    assert "기준금리</mark>와" in markup
+    assert "ETF</mark>를" in markup
+    assert markup.endswith("</p><p>기준금리와 etf의 관계입니다.</p>")
+    unmarked = re.sub(r"</?mark[^>]*>", "", markup)
+    assert "\n\n".join(re.findall(r"<p>(.*?)</p>", unmarked)) == body
+
+
+def test_overlapping_terms_and_markup_are_rendered_safely():
+    markup = app_ui.render_answer_html(
+        "<통화정책>과 정책은 다릅니다.", terms=["정책", "통화정책"]
+    )
+
+    assert markup == (
+        '<p>&lt;<mark class="financial-term-highlight">통화정책</mark>&gt;과 '
+        '<mark class="financial-term-highlight">정책</mark>은 다릅니다.</p>'
+    )
+
+
+def test_news_item_escapes_text_and_drops_unsafe_link():
+    unsafe = app_ui.render_news_article(EXAMPLE_RESULT["news_sources"][1], index=2)
+
+    assert "<script>" not in unsafe
+    assert "&lt;script&gt;" in unsafe
+    assert "href" not in unsafe  # javascript: 링크는 만들지 않는다
+
+    safe = app_ui.render_news_article(EXAMPLE_RESULT["news_sources"][0], index=1, cited=True)
+    assert 'href="http://www.newstomato.com/ReadNews.aspx?no=1321923"' in safe
+    assert 'rel="noopener noreferrer"' in safe
+    assert "2026.11.26 10:20" in safe
+    assert "newstomato.com" in safe
+    assert "답변에 사용" in safe
+
+
+# ---------- 화면 구성 ----------
+
+def test_first_screen_has_no_fixed_stats_or_tech_badges(search_app):  # noqa: F811
+    at, _, _ = search_app
+    shown = page_text(at)
+
+    assert len(at.metric) == 0
+    for badge in ("HYBRID SEARCH", "FINANCIAL TERMS", "RECENT NEWS", "GEMINI AI"):
+        assert badge not in shown
+
+
+def test_result_screen_shows_answer_then_sources(search_app):  # noqa: F811
+    at, spy, _ = search_app
+    spy.responses["기준금리 질문"] = EXAMPLE_RESULT
+
+    at.text_input(key="search_question").input("기준금리 질문")
+    at.button(key="analyze_button").click().run()
+
+    assert not at.exception
+    shown = page_text(at)
+
+    assert '<p class="ff-eyebrow">답변한 질문</p>' in shown
+    assert '<h2 class="ff-answer-q">기준금리 질문</h2>' in shown
+    assert "참고한 금융용어:" not in shown  # 출처 줄은 본문에서 분리
+    assert [t.label for t in at.tabs] == ["금융용어 근거 3", "관련 뉴스 2"]
+    # 답변이 인용한 용어 2개 + 기사 1개에 표시
+    assert shown.count("답변에 사용") == 3
+    assert any(e.label == "검색 과정 자세히 보기" for e in at.expander)
+
+    at.button(key=f"suggestion_{SUGGESTION}").click().run()
+
+    assert at.text_input(key="search_question").value == SUGGESTION
+    assert '<h2 class="ff-answer-q">기준금리 질문</h2>' in page_text(at)
+    assert spy.calls == ["기준금리 질문"]
+
+
+def test_result_screen_keeps_unconfirmed_citations_visible(search_app):  # noqa: F811
+    at, spy, _ = search_app
+    spy.responses["기준금리 질문"] = {
+        "answer": (
+            "정책금리에 관한 답변입니다.\n"
+            "참고한 금융용어: 기준금리, 실질금리 전망\n"
+            f"참고한 뉴스: {TITLE_WITH_COMMA}, 미확인 기사"
+        ),
+        "sources": [
+            {"term": "기준금리", "document": "금융용어: 기준금리 설명: 정책금리입니다."},
+            {
+                "term": "실질금리",
+                "document": "금융용어: 실질금리\n설명: 물가를 반영한 금리입니다.\n금융용어: 명목금리와 비교합니다.",
+            },
+        ],
+        "news_sources": [{"title": TITLE_WITH_COMMA}, {"title": "한은"}],
+    }
+
+    at.text_input(key="search_question").input("기준금리 질문")
+    at.button(key="analyze_button").click().run()
+
+    assert not at.exception
+    shown = re.sub(r"</?mark[^>]*>", "", page_text(at))
+    assert "참고한 금융용어: 기준금리, 실질금리 전망" in shown
+    assert "미확인 기사" in shown
+    assert '<p class="ff-item-body">정책금리입니다.</p>' in shown
+    assert "물가를 반영한 금리입니다. 금융용어: 명목금리와 비교합니다." in shown
+    assert '<span class="ff-item-title">기준금리</span><span class="ff-badge">답변에 사용</span>' in shown
+    assert f'{TITLE_WITH_COMMA}</span><span class="ff-badge">답변에 사용</span>' in shown
+    assert shown.count("답변에 사용") == 2

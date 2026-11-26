@@ -3,7 +3,9 @@ from __future__ import annotations
 import html
 import re
 from pathlib import Path
+from datetime import datetime
 from typing import Any
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import streamlit as st
@@ -61,8 +63,11 @@ def render_header() -> None:
 def render_sidebar() -> str:
     """FinFlow의 왼쪽 내비게이션 메뉴를 출력합니다."""
     with st.sidebar:
-        st.markdown("## FinFlow")
-        st.caption("Financial Intelligence Workspace")
+        st.markdown(
+            '<div class="ff-brand">FinFlow</div>'
+            '<div class="ff-brand-sub">금융 개념과 최신 뉴스를 함께</div>',
+            unsafe_allow_html=True,
+        )
 
         selected_page = st.radio(
             "메뉴",
@@ -75,13 +80,12 @@ def render_sidebar() -> str:
             label_visibility="collapsed",
         )
 
-        st.divider()
-        st.caption("Hybrid RAG · Gemini · ChromaDB")
-
         st.button(
-            "＋ 새 분석",
+            "새 질문",
+            icon=":material/add:",
             width="stretch",
             on_click=reset_search,
+            key="new_search",
         )
 
     return selected_page
@@ -116,59 +120,77 @@ def render_pipeline_state(health: PipelineHealth) -> None:
         st.info("로컬 데이터 사용 중 (정기 갱신 대상 아님)")
 
 
+STATUS_TONES = {
+    PipelineState.ON_SCHEDULE: "ok",
+    PipelineState.DELAYED: "warn",
+    PipelineState.NO_DATA: "error",
+    PipelineState.CHECK_ERROR: "error",
+    PipelineState.LOCAL: "muted",
+}
+
+
+def describe_pipeline_message(health: PipelineHealth) -> str:
+    """상태별 한 줄 설명. 데이터 없음과 확인 오류를 구분합니다."""
+    if health.state is PipelineState.ON_SCHEDULE:
+        return "매일 08·12·18시에 새 뉴스를 반영해요"
+    if health.state is PipelineState.DELAYED:
+        return f"{format_kst(health.missed_run)} 회차가 아직 반영되지 않았어요"
+    if health.state is PipelineState.NO_DATA:
+        return "검색 데이터 준비 필요"
+    if health.state is PipelineState.CHECK_ERROR:
+        return "최신 데이터를 확인하지 못해 기존 데이터로 답하고 있어요"
+    return "로컬 데이터라 정기 갱신 대상이 아니에요"
+
+
+def render_status_summary(health: PipelineHealth) -> None:
+    """갱신 상태 카드. 최근 갱신·다음 예정을 각각 한 줄에 둡니다."""
+    tone = STATUS_TONES[health.state]
+    detail = (
+        f'<p class="ff-status-detail">{html.escape(health.detail)}</p>'
+        if health.detail
+        else ""
+    )
+
+    st.markdown(
+        compact_html(f"""
+        <div class="ff-status ff-status--{tone}">
+            <div class="ff-status-head">
+                <span class="ff-dot" aria-hidden="true"></span>
+                <span class="ff-status-label">{html.escape(health.label)}</span>
+            </div>
+            <p class="ff-status-msg">{html.escape(describe_pipeline_message(health))}</p>
+            <dl class="ff-status-rows">
+                <div><dt>최근 갱신</dt><dd>{format_kst(health.last_updated)}</dd></div>
+                <div><dt>다음 예정</dt><dd>{format_kst(health.next_scheduled)}</dd></div>
+            </dl>
+            {detail}
+        </div>
+        """),
+        unsafe_allow_html=True,
+    )
+
+
 def render_topbar(status: NewsSnapshotStatus) -> None:
-    """현재 페이지 제목과 서비스 상태를 출력합니다."""
-    title_col, status_col = st.columns([7, 3])
+    """페이지 제목과 뉴스 갱신 상태를 출력합니다."""
+    title_col, status_col = st.columns([3, 2], gap="large")
 
     with title_col:
         st.markdown(
-            """
-            <section class="finflow-hero">
-                <div class="finflow-brand">FinFlow</div>
-                <h1>금융 개념과 최신 뉴스를 연결하는 AI 검색 서비스</h1>
-                <p>
-                    한국은행 금융용어와 최신 금융 뉴스를 함께 검색해
-                    어려운 금융 개념과 시장 상황을 쉽게 설명합니다.
+            compact_html("""
+            <section class="ff-hero">
+                <p class="ff-eyebrow">AI 금융 검색</p>
+                <h1>궁금한 금융 개념을 물어보세요</h1>
+                <p class="ff-hero-desc">
+                    한국은행 경제금융용어와 최근 금융 뉴스를 함께 찾아
+                    쉽게 설명해 드려요.
                 </p>
             </section>
-            """,
+            """),
             unsafe_allow_html=True,
         )
 
-    health = evaluate_pipeline(status)
-
     with status_col:
-        st.markdown(f"**{health.label}**")
-        render_pipeline_state(health)
-        st.caption(describe_pipeline_schedule(health))
-
-        if health.detail:
-            st.caption(f"상태 확인 결과: {health.detail}")
-
-
-def render_home_statistics(status: NewsSnapshotStatus) -> None:
-    """메인 화면에 프로젝트 데이터 규모를 출력합니다."""
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        with st.container(border=True):
-            st.caption("금융용어")
-            st.metric("Terms", "770개")
-
-    with col2:
-        with st.container(border=True):
-            st.caption("Vector Data")
-            st.metric("Chunks", "1,121개")
-
-    with col3:
-        with st.container(border=True):
-            st.caption("금융뉴스")
-            st.metric("Articles", "373건")
-
-    with col4:
-        with st.container(border=True):
-            st.caption("Pipeline")
-            st.metric("Status", evaluate_pipeline(status).metric)
+        render_status_summary(evaluate_pipeline(status))
 
 
 def render_pipeline(status: NewsSnapshotStatus) -> None:
@@ -393,44 +415,36 @@ def highlight_terms_in_answer(
     answer: str,
     terms: list[str],
 ) -> str:
-    """
-    답변에 실제로 등장한 금융용어만 강조합니다.
-
-    검색 근거에 용어가 있어도 답변 본문에 없으면
-    강제로 추가하거나 강조하지 않습니다.
-    """
+    """답변 본문에서 각 금융용어가 처음 나오는 곳만 강조합니다."""
     # Gemini가 강조용 Markdown을 반환해도 HTML 화면에 별표가 노출되지
     # 않도록 렌더링 전에 강조 구분자를 제거합니다.
     clean_answer = answer.replace("*", "")
-    safe_answer = html.escape(clean_answer)
-
     valid_terms = sorted(
-        {
-            term.strip()
-            for term in terms
-            if isinstance(term, str)
-            and len(term.strip()) >= 2
-            and term.strip().lower() in clean_answer.lower()
-        },
+        {term.strip() for term in terms if isinstance(term, str) and len(term.strip()) >= 2},
         key=len,
         reverse=True,
     )
+    if not valid_terms:
+        return html.escape(clean_answer).replace("\n", "<br>")
 
-    for term in valid_terms:
-        escaped_term = html.escape(term)
+    # 원문에서 겹치는 용어는 긴 쪽을 우선하고, 각 조각을 출력할 때 이스케이프한다.
+    pattern = re.compile("|".join(re.escape(term) for term in valid_terms), re.IGNORECASE)
+    seen: set[str] = set()
+    parts: list[str] = []
+    end = 0
+    for match in pattern.finditer(clean_answer):
+        parts.append(html.escape(clean_answer[end:match.start()]))
+        term = match.group()
+        key = term.casefold()
+        escaped = html.escape(term)
+        if key not in seen:
+            escaped = f'<mark class="financial-term-highlight">{escaped}</mark>'
+            seen.add(key)
+        parts.append(escaped)
+        end = match.end()
+    parts.append(html.escape(clean_answer[end:]))
 
-        safe_answer = re.sub(
-            re.escape(escaped_term),
-            (
-                '<mark class="financial-term-highlight">'
-                f"{escaped_term}"
-                "</mark>"
-            ),
-            safe_answer,
-            flags=re.IGNORECASE,
-        )
-
-    return safe_answer.replace("\n", "<br>")
+    return "".join(parts).replace("\n", "<br>")
 
 
 def extract_news_sources(result: Any) -> list[dict[str, Any]]:
@@ -485,259 +499,344 @@ def reset_search() -> None:
     """현재 질문과 검색 결과를 초기화합니다."""
     st.session_state.search_question = ""
     st.session_state.search_result = None
+    st.session_state.pop("answered_question", None)
 
 
-def render_search_analysis(
-    query_analysis: dict[str, Any],
-    rerank_info: dict[str, Any],
-    reference_count: int,
-    news_count: int,
-) -> None:
-    """RAG 검색 과정의 핵심 정보를 요약 카드로 출력합니다."""
-    intent = query_analysis.get("intent") or "금융 정보 탐색"
-    candidate_count = rerank_info.get("candidate_count", 0)
-    used_fallback = bool(
-        query_analysis.get("used_fallback")
-        or rerank_info.get("used_fallback")
-    )
+def compact_html(markup: str) -> str:
+    """줄바꿈·들여쓰기를 없앤 HTML. Markdown이 들여쓴 줄을 코드 블록으로 보지 않게 합니다.
 
-    with st.container(border=True):
-        st.markdown("### 검색 분석")
+    줄바꿈은 공백 하나로 바꿔 문장 속 띄어쓰기를 지키고, 태그 사이 공백만 없앱니다.
+    """
+    one_line = re.sub(r"\s*\n\s*", " ", markup).strip()
+    return re.sub(r">\s+<", "><", one_line)
 
-        st.caption("질문 유형")
-        st.markdown(f"**{intent}**")
 
-        st.caption("검색 방식")
-        st.markdown("**Hybrid Search**")
+CITED_TERMS_LABEL = "참고한 금융용어"
+CITED_NEWS_LABEL = "참고한 뉴스"
+CITATION_LINE = re.compile(
+    rf"(?P<emphasis>\*{{1,2}})?(?P<label>{CITED_TERMS_LABEL}|{CITED_NEWS_LABEL})"
+    r"(?P<label_close>(?P=emphasis))?:(?P<items>.*)"
+)
 
-        st.caption("검색 후보")
-        if candidate_count:
-            st.markdown(f"**금융용어 {candidate_count}건**")
+
+def match_citation_items(items: str, candidates: set[str]) -> tuple[set[str], bool]:
+    """쉼표를 포함한 제목을 우선 확인하고 모든 항목의 일치 여부를 반환합니다."""
+    parts = items.split(",")
+    max_width = max((candidate.count(",") + 1 for candidate in candidates), default=1)
+    matched: set[str] = set()
+    all_matched = True
+    start = 0
+
+    while start < len(parts):
+        for end in range(min(start + max_width, len(parts)), start, -1):
+            item = ",".join(parts[start:end]).strip()
+            if item not in candidates:
+                item = re.sub(r"^(\*{1,2})(.+)\1$", r"\2", item).strip()
+            if item in candidates:
+                matched.add(item)
+                start = end
+                break
         else:
-            st.markdown("**Vector + Keyword**")
+            all_matched = False
+            start += 1
 
-        st.caption("최종 근거")
-        st.markdown(
-            f"**금융용어 {reference_count}건 · 뉴스 {news_count}건**"
-        )
-
-        st.caption("답변 생성")
-        st.markdown("**Gemini**")
-
-        if used_fallback:
-            st.warning("일부 검색 과정에서 기본 검색어를 사용했습니다.")
+    return matched, all_matched
 
 
-def render_search_results(result: Any) -> None:
-    """Stitch 시안을 반영한 RAG 검색 결과 화면을 출력합니다."""
+def split_answer_citations(
+    answer: str,
+    terms: list[str],
+    news_titles: list[str],
+) -> tuple[str, set[str], set[str]]:
+    """답변 끝의 '참고한 금융용어/뉴스' 줄을 본문에서 분리합니다.
+
+    실제 검색 결과의 용어·기사 제목과 일치하는 항목만 인용으로 인정하고,
+    일치하지 않는 항목이 있는 줄은 본문에 그대로 둡니다.
+    """
+    body_lines: list[str] = []
+    cited_terms: set[str] = set()
+    cited_titles: set[str] = set()
+    sources = {
+        CITED_TERMS_LABEL: (set(terms) - {""}, cited_terms),
+        CITED_NEWS_LABEL: (set(news_titles) - {""}, cited_titles),
+    }
+
+    for line in answer.splitlines():
+        citation = CITATION_LINE.fullmatch(line.strip())
+        if citation:
+            candidates, cited = sources[citation["label"]]
+            items = citation["items"]
+            emphasis = citation["emphasis"]
+            if emphasis and not citation["label_close"]:
+                if items.startswith(emphasis):
+                    items = items.removeprefix(emphasis)
+                else:
+                    items = items.removesuffix(emphasis)
+
+            matched, all_matched = match_citation_items(items, candidates)
+            cited.update(matched)
+            if all_matched:
+                continue
+
+        body_lines.append(line)
+
+    return "\n".join(body_lines).strip(), cited_terms, cited_titles
+
+
+def format_published_at(value: str) -> str:
+    """기사 발행 시각을 KST 'YYYY.MM.DD HH:MM'으로 표시합니다."""
+    text = str(value or "").strip()
+
+    if not text:
+        return ""
+
+    try:
+        published = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return text
+
+    if published.tzinfo is None:
+        return text
+
+    return format_kst(published)
+
+
+def safe_external_url(value: str) -> str:
+    """http(s) 링크만 허용합니다. 그 밖의 값은 빈 문자열."""
+    url = str(value or "").strip()
+    parsed = urlparse(url)
+
+    if parsed.scheme in ("http", "https") and parsed.netloc:
+        return url
+
+    return ""
+
+
+def strip_source_prefix(text: str, prefixes: tuple[str, ...]) -> str:
+    """'금융용어: …', '뉴스 내용: …' 같은 저장용 머리말을 화면에서 뺍니다."""
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
+    kept = [
+        line.split(":", 1)[1].strip()
+        if any(line.startswith(prefix) for prefix in prefixes)
+        else line
+        for line in lines
+        if not line.startswith(("금융용어:", "뉴스 제목:"))
+    ]
+    return " ".join(kept).strip()
+
+
+def format_term_description(document: str, term: str) -> str:
+    """문서 앞의 용어명과 설명 머리말을 제거하고 본문을 표시용으로 정리합니다."""
+    text = document.strip()
+    if text.startswith("금융용어:"):
+        content = text.removeprefix("금융용어:").lstrip()
+        heading = re.match(rf"{re.escape(term)}(?=\s|설명:|$)", content) if term else None
+        if heading:
+            text = content[heading.end():].lstrip()
+        elif heading := re.match(r"[^\r\n]+?\s+(?=설명:)", content):
+            text = content[heading.end():]
+
+    text = text.removeprefix("설명:")
+    return " ".join(line.strip() for line in text.splitlines() if line.strip())
+
+
+def render_answer_html(answer: str, terms: list[str]) -> str:
+    """강조된 답변을 문단 단위 HTML로 만듭니다."""
+    highlighted = highlight_terms_in_answer(answer=answer, terms=terms)
+    paragraphs = [
+        re.sub(r"^(?:\s*<br>)+|(?:<br>\s*)+$", "", part).strip()
+        for part in re.split(r"(?:<br>\s*){2,}", highlighted)
+    ]
+    return "".join(f"<p>{part}</p>" for part in paragraphs if part)
+
+
+def render_search_results(result: Any, *, question: str = "") -> None:
+    """검색 결과: 답변 → 출처(금융용어·뉴스) → 검색 과정 순으로 보여줍니다."""
     query_analysis = extract_query_analysis(result)
     rerank_info = extract_rerank_info(result)
     references = extract_references(result)
     news_sources = extract_news_sources(result)
     answer = extract_answer(result)
     reference_terms = extract_reference_terms(references)
+    news_titles = [str(news.get("title", "")).strip() for news in news_sources]
+    if not question and isinstance(result, dict):
+        saved_query = result.get("query")
+        if isinstance(saved_query, str):
+            question = saved_query.strip()
 
-    highlighted_answer = highlight_terms_in_answer(
+    body, cited_terms, cited_titles = split_answer_citations(
         answer=answer,
         terms=reference_terms,
+        news_titles=news_titles,
     )
 
-    st.markdown("---")
-
-    answer_col, analysis_col = st.columns([8, 4], gap="large")
-
-    with answer_col:
-        with st.container(border=True):
-            st.caption(
-                f"금융용어 {len(references)}건 · "
-                f"금융뉴스 {len(news_sources)}건 활용"
+    with st.container(key="answer_card"):
+        st.markdown(
+            (
+                '<p class="ff-eyebrow">답변한 질문</p>'
+                f'<h2 class="ff-answer-q">{html.escape(question)}</h2>'
+                if question
+                else '<p class="ff-eyebrow">AI 답변</p>'
             )
-            st.markdown("### AI 분석 결과")
-            st.markdown(
-                f"""
-                <div class="ai-answer-content">
-                    {highlighted_answer}
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    with analysis_col:
-        render_search_analysis(
-            query_analysis=query_analysis,
-            rerank_info=rerank_info,
-            reference_count=len(references),
-            news_count=len(news_sources),
+            + '<div class="ai-answer-content">'
+            + render_answer_html(body, reference_terms)
+            + "</div>",
+            unsafe_allow_html=True,
+        )
+        st.caption(
+            f"금융용어 {len(references)}건 · 뉴스 {len(news_sources)}건을 "
+            "찾아 답변에 활용했어요"
         )
 
-    st.write("")
-
-    term_tab, news_tab, detail_tab = st.tabs(
+    term_tab, news_tab = st.tabs(
         [
             f"금융용어 근거 {len(references)}",
             f"관련 뉴스 {len(news_sources)}",
-            "검색 상세",
         ]
     )
 
     with term_tab:
         if references:
-            for index, reference in enumerate(references, start=1):
-                with st.container(border=True):
-                    render_reference(reference, index)
+            with st.container(key="term_list"):
+                for index, reference in enumerate(references, start=1):
+                    render_reference(reference, index, cited_terms)
         else:
             st.info("검색된 금융용어 근거가 없습니다.")
 
     with news_tab:
-        render_news_results(news_sources)
+        render_news_results(news_sources, cited_titles)
 
-    with detail_tab:
+    with (
+        st.container(key="process_detail"),
+        st.expander("검색 과정 자세히 보기", icon=":material/manage_search:"),
+    ):
         render_query_analysis(query_analysis)
         render_rerank_info(rerank_info)
+        st.json(
+            {
+                "reference_count": len(references),
+                "news_count": len(news_sources),
+                "query_analysis": query_analysis,
+                "rerank_info": rerank_info,
+            },
+            expanded=False,
+        )
 
-        with st.expander("검색 결과 원본 구조 보기"):
-            st.json(
-                {
-                    "reference_count": len(references),
-                    "news_count": len(news_sources),
-                    "query_analysis": query_analysis,
-                    "rerank_info": rerank_info,
-                }
-            )
 
-
-def render_reference(reference: dict[str, Any], index: int) -> None:
-    """검색된 금융용어 한 건을 화면에 출력합니다."""
+def render_reference(
+    reference: dict[str, Any],
+    index: int,
+    cited_terms: set[str] | None = None,
+) -> None:
+    """금융용어 근거 한 건. 카드 안에 상자를 겹치지 않습니다."""
     metadata = reference.get("metadata", {})
 
     if not isinstance(metadata, dict):
         metadata = {}
 
-    term = (
+    term = str(
         reference.get("term")
         or reference.get("title")
         or metadata.get("term")
         or f"검색 결과 {index}"
-    )
+    ).strip()
 
-    score = (
-        reference.get("similarity")
-        or reference.get("score")
-        or reference.get("distance")
-    )
-
-    st.markdown(f"**{index}. {term}**")
-
-    if isinstance(score, (int, float)):
-        st.caption(f"검색 점수: {score:.4f}")
-
-    document = (
+    document = str(
         reference.get("document")
         or reference.get("text")
         or reference.get("content")
+        or ""
     )
+    description = format_term_description(document, term)
+    preview = description
+    if len(preview) > 160:
+        preview = f"{preview[:160].rstrip()}…"
 
-    if isinstance(document, str) and document.strip():
-        with st.expander("검색된 원문 보기"):
-            st.write(document)
+    cited = bool(cited_terms) and term in cited_terms
+    badge = '<span class="ff-badge">답변에 사용</span>' if cited else ""
 
-    st.divider()
+    with st.container(key=f"term_item_{index}"):
+        st.markdown(
+            compact_html(f"""
+            <div class="ff-item-head">
+                <span class="ff-item-title">{html.escape(term)}</span>{badge}
+            </div>
+            <p class="ff-item-meta">한국은행 경제금융용어</p>
+            {f'<p class="ff-item-body">{html.escape(preview)}</p>' if preview else ''}
+            """),
+            unsafe_allow_html=True,
+        )
+
+        if len(description) > len(preview.rstrip("…")):
+            with st.expander("설명 전체 보기"):
+                st.write(description)
 
 
 def render_news_article(
     article: dict[str, Any],
     index: int,
-) -> None:
-    """관련 뉴스 한 건을 compact 카드로 출력합니다."""
+    cited: bool = False,
+) -> str:
+    """관련 뉴스 한 건을 목록 항목 HTML로 만듭니다."""
     title = str(
         article.get("title")
         or article.get("news_title")
         or f"관련 뉴스 {index}"
     ).strip()
 
-    summary = str(
+    summary = strip_source_prefix(
         article.get("summary")
         or article.get("description")
         or article.get("content")
-        or ""
-    ).strip()
+        or "",
+        ("뉴스 내용:",),
+    )
 
-    published_at = str(
+    published = format_published_at(
         article.get("published_at")
         or article.get("pub_date")
         or article.get("date")
         or ""
-    ).strip()
+    )
 
-    category = str(
-        article.get("category")
-        or article.get("section")
-        or ""
-    ).strip()
+    category = str(article.get("category") or article.get("section") or "").strip()
 
-    url = str(
+    url = safe_external_url(
         article.get("original_url")
         or article.get("url")
         or article.get("link")
         or article.get("originallink")
         or ""
-    ).strip()
+    )
+    source = urlparse(url).netloc.removeprefix("www.") if url else ""
 
-    score = article.get("score")
-    if score is None:
-        score = article.get("distance")
+    meta = " · ".join(
+        f'<span class="ff-nowrap">{html.escape(part)}</span>'
+        for part in (published, category, source)
+        if part
+    )
+    badge = '<span class="ff-badge">답변에 사용</span>' if cited else ""
+    title_html = (
+        f'<a class="ff-news-title" href="{html.escape(url, quote=True)}" '
+        f'target="_blank" rel="noopener noreferrer">{html.escape(title)}</a>'
+        if url
+        else f'<span class="ff-news-title">{html.escape(title)}</span>'
+    )
 
-    max_summary_length = 170
-    if len(summary) > max_summary_length:
-        summary = f"{summary[:max_summary_length].rstrip()}…"
-
-    metadata_parts = [
-        value
-        for value in [published_at, category]
-        if value
-    ]
-    metadata_text = " · ".join(metadata_parts)
-
-    safe_title = html.escape(title)
-    safe_summary = html.escape(summary)
-    safe_metadata = html.escape(metadata_text)
-
-    with st.container(border=True):
-        st.markdown(
-            f"""
-            <article class="news-card">
-                <h4 class="news-card-title">{safe_title}</h4>
-                {f'<p class="news-card-meta">{safe_metadata}</p>' if safe_metadata else ''}
-                {f'<p class="news-card-summary">{safe_summary}</p>' if safe_summary else ''}
-            </article>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        footer_left, footer_right = st.columns(
-            [3, 1],
-            vertical_alignment="center",
-        )
-
-        with footer_left:
-            if isinstance(score, (int, float)):
-                st.caption(f"검색 관련도 · {float(score):.3f}")
-            else:
-                st.caption("FinFlow 관련 뉴스")
-
-        with footer_right:
-            if url:
-                st.link_button(
-                    "원문 보기",
-                    url,
-                    width="stretch",
-                )
+    return compact_html(f"""
+        <li class="ff-news-item">
+            <div class="ff-item-head">{title_html}{badge}</div>
+            {f'<p class="ff-item-meta">{meta}</p>' if meta else ''}
+            {f'<p class="ff-item-body ff-clamp">{html.escape(summary)}</p>' if summary else ''}
+        </li>
+    """)
 
 
 def render_news_results(
     news_articles: list[dict[str, Any]],
+    cited_titles: set[str] | None = None,
 ) -> None:
-    """관련 뉴스를 최대 6건, 2열 카드로 표시합니다."""
+    """관련 뉴스를 최대 6건, 한 장의 목록으로 표시합니다."""
     if not news_articles:
         st.info(
             "검색된 관련 뉴스가 없습니다. "
@@ -745,113 +844,66 @@ def render_news_results(
         )
         return
 
-    visible_articles = news_articles[:6]
-
-    for row_start in range(0, len(visible_articles), 2):
-        left_column, right_column = st.columns(
-            2,
-            gap="medium",
+    cited_titles = cited_titles or set()
+    items = "".join(
+        render_news_article(
+            article=article,
+            index=index,
+            cited=str(article.get("title", "")).strip() in cited_titles,
         )
+        for index, article in enumerate(news_articles[:6], start=1)
+    )
 
-        with left_column:
-            render_news_article(
-                article=visible_articles[row_start],
-                index=row_start + 1,
-            )
-
-        right_index = row_start + 1
-
-        if right_index < len(visible_articles):
-            with right_column:
-                render_news_article(
-                    article=visible_articles[right_index],
-                    index=right_index + 1,
-                )
+    st.markdown(
+        f'<ul class="ff-news-list">{items}</ul>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_query_analysis(
     query_analysis: dict[str, Any],
 ) -> None:
-    """Gemini가 생성한 검색 질의를 화면에 표시합니다."""
+    """Gemini가 만든 검색 질의를 표로 보여줍니다(검색 과정 펼침 안에서 사용)."""
     if not query_analysis:
         return
 
-    with st.expander("Gemini 질문 분석 결과"):
-        intent = query_analysis.get("intent", "")
-        financial_term_query = query_analysis.get(
-            "financial_term_query",
-            "",
-        )
-        news_query = query_analysis.get(
-            "news_query",
-            "",
-        )
-        financial_term_queries = query_analysis.get(
-            "financial_term_queries",
-            [],
-        )
-        keywords = query_analysis.get("keywords", [])
-        used_fallback = query_analysis.get(
-            "used_fallback",
-            False,
-        )
+    term_queries = query_analysis.get("financial_term_queries", [])
+    keywords = query_analysis.get("keywords", [])
+    rows = {
+        "질문 의도": query_analysis.get("intent", ""),
+        "금융용어 검색어": query_analysis.get("financial_term_query", ""),
+        "금융용어 세부 검색어": ", ".join(term_queries)
+        if isinstance(term_queries, list)
+        else "",
+        "뉴스 검색어": query_analysis.get("news_query", ""),
+        "핵심 키워드": ", ".join(keywords) if isinstance(keywords, list) else "",
+    }
 
-        if intent:
-            st.markdown(f"**질문 의도:** {intent}")
+    st.markdown("**질문 분석**")
+    for label, value in rows.items():
+        if value:
+            st.markdown(f"- {label}: {value}")
 
-        if financial_term_query:
-            st.markdown(
-                f"**금융용어 검색어:** {financial_term_query}"
-            )
-
-        if (
-            isinstance(financial_term_queries, list)
-            and financial_term_queries
-        ):
-            st.markdown("**금융용어 세부 검색어:**")
-
-            for term_query in financial_term_queries:
-                st.markdown(f"- {term_query}")
-
-        if news_query:
-            st.markdown(
-                f"**뉴스 검색어:** {news_query}"
-            )
-
-        if isinstance(keywords, list) and keywords:
-            st.markdown(
-                f"**핵심 키워드:** {', '.join(keywords)}"
-            )
-
-        if used_fallback:
-            st.warning(
-                "질문 분석에 실패하여 원본 질문을 검색어로 사용했습니다."
-            )
+    if query_analysis.get("used_fallback", False):
+        st.caption("질문 분석에 실패하여 원본 질문을 검색어로 사용했습니다.")
 
 
 def render_rerank_info(
     rerank_info: dict[str, Any],
 ) -> None:
-    """금융용어 재정렬 정보를 화면에 표시합니다."""
+    """금융용어 재정렬 정보를 보여줍니다(검색 과정 펼침 안에서 사용)."""
     if not rerank_info:
         return
 
-    with st.expander("금융용어 검색 고도화 결과"):
-        candidate_count = rerank_info.get("candidate_count", 0)
-        reason = rerank_info.get("reason", "")
-        used_fallback = rerank_info.get("used_fallback", False)
+    st.markdown("**금융용어 재정렬**")
+    st.markdown(f"- 검색 후보: {rerank_info.get('candidate_count', 0)}개")
 
-        st.markdown(
-            f"**ChromaDB 검색 후보 수:** {candidate_count}개"
-        )
+    reason = rerank_info.get("reason", "")
+    if reason:
+        st.markdown(f"- 선택 이유: {reason}")
 
-        if reason:
-            st.markdown(f"**Gemini 재정렬 판단:** {reason}")
-
-        if used_fallback:
-            st.warning(
-                "Gemini 재정렬에 실패하여 기존 검색 순서를 사용했습니다."
-            )
+    if rerank_info.get("used_fallback", False):
+        st.caption("재정렬에 실패하여 기존 검색 순서를 사용했습니다.")
 
 
 def render_data_setup_notice(status: NewsSnapshotStatus) -> None:
@@ -919,22 +971,6 @@ def render_search(status: NewsSnapshotStatus) -> None:
                 width="stretch",
             )
 
-    st.markdown(
-        """
-        <div class="feature-chips">
-            <span>HYBRID SEARCH</span>
-            <span>FINANCIAL TERMS</span>
-            <span>RECENT NEWS</span>
-            <span class="feature-chip-primary">GEMINI AI</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.caption(
-        f"뉴스 제공 범위: 최근 {get_news_retention_days()}일 안에 발행된 기사"
-    )
-
     suggested_questions = [
         "이번 주 코스피 변동 원인",
         "금리와 은행주의 관계",
@@ -942,20 +978,19 @@ def render_search(status: NewsSnapshotStatus) -> None:
         "반도체 주가 상승 이유",
     ]
 
-    suggestion_columns = st.columns(4, gap="small")
-
-    for column, suggested_question in zip(
-        suggestion_columns,
-        suggested_questions,
-    ):
-        with column:
+    with st.container(horizontal=True, key="suggestions", gap="small"):
+        for suggested_question in suggested_questions:
             if st.button(
                 suggested_question,
                 key=f"suggestion_{suggested_question}",
-                width="stretch",
+                width="content",
             ):
                 st.session_state["pending_suggestion"] = suggested_question
                 st.rerun()
+
+    st.caption(
+        f"뉴스 제공 범위: 최근 {get_news_retention_days()}일 안에 발행된 기사"
+    )
 
     if submitted:
         cleaned_question = question.strip()
@@ -976,6 +1011,7 @@ def render_search(status: NewsSnapshotStatus) -> None:
             # 이 질문이 실패했을 때 이전 질문의 답변·출처가
             # 이 질문의 결과처럼 아래에 남지 않게 한다.
             st.session_state.search_result = None
+            st.session_state.pop("answered_question", None)
 
             try:
                 with st.spinner(
@@ -984,6 +1020,7 @@ def render_search(status: NewsSnapshotStatus) -> None:
                     result = ask_finflow(cleaned_question)
 
                 st.session_state.search_result = result
+                st.session_state.answered_question = cleaned_question
 
                 references = extract_references(result)
                 news_sources = extract_news_sources(result)
@@ -1022,7 +1059,9 @@ def render_search(status: NewsSnapshotStatus) -> None:
     result = st.session_state.search_result
 
     if result is not None:
-        render_search_results(result)
+        render_search_results(
+            result, question=st.session_state.get("answered_question", "")
+        )
 
 
 def render_technology_stack() -> None:
@@ -1041,16 +1080,20 @@ def render_technology_stack() -> None:
     )
 
 
-def main() -> None:
+def main(*, preview: bool = False) -> None:
     """FinFlow Streamlit 애플리케이션을 실행합니다."""
     st.set_page_config(
         page_title="FinFlow",
-        page_icon="💰",
+        page_icon=":material/insights:",
         layout="wide",
-        initial_sidebar_state="expanded",
+        initial_sidebar_state="auto",
     )
 
     load_css()
+
+    if preview:
+        with st.container(key="preview_notice"):
+            st.caption("예시 미리보기 · 답변과 뉴스는 고정 예시입니다.")
 
     pipeline_status = sync_latest_news_snapshot()
 
@@ -1072,13 +1115,7 @@ def main() -> None:
 
     if selected_page == "AI 금융 검색":
         render_topbar(pipeline_status)
-        st.divider()
-
         render_search(pipeline_status)
-        st.write("")
-
-        if st.session_state.get("search_result") is None:
-            render_home_statistics(pipeline_status)
 
     elif selected_page == "시장 브리핑":
         st.title("시장 브리핑")

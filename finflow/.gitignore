@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 service-account*.json
+.streamlit/secrets.toml
 *credentials*.json
 *.pem
 *.key
