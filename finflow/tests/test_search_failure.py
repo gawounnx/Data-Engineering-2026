@@ -49,7 +49,7 @@ def test_failed_question_does_not_show_previous_answer(search_app):  # noqa: F81
     assert ANSWER_A not in shown_b
     assert TERM_A not in shown_b
     assert NEWS_A not in shown_b
-    assert "AI 분석 결과" not in shown_b
+    assert "AI 답변" not in shown_b
     assert not any(t.label.startswith("금융용어 근거") for t in at.tabs)
 
     # 다른 조작으로 다시 실행돼도 A의 결과가 되살아나지 않는다.

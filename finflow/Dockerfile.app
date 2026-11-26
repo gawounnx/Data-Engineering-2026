@@ -21,6 +21,8 @@ COPY src ./src
 COPY scripts ./scripts
 COPY utils ./utils
 COPY styles ./styles
+# 테마(색·서체·모서리). 비밀값(secrets.toml)은 .dockerignore로 제외한다.
+COPY .streamlit/config.toml ./.streamlit/config.toml
 COPY data/chroma ./data/chroma
 
 CMD ["streamlit", "run", "app_ui.py", \
