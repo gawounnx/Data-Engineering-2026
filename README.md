@@ -2,7 +2,7 @@
 
 ### 금융 입문자가 용어의 뜻에서 뉴스의 맥락까지 한 번에 이해하도록 돕는 금융 지식 검색 서비스
 
-**차가원 · 개인 프로젝트 · BDAI 데이터 엔지니어링 부트캠프에서 출발**
+**차가원 · 개인 프로젝트**
 Python · GCS · BigQuery · Sentence Transformers · ChromaDB · Gemini · Streamlit · Cloud Run
 
 ## 1. 해결하려는 문제와 핵심 기능
@@ -95,19 +95,19 @@ python -m pytest tests -q                                # 자동 테스트 (데
 
 환경 변수, 데이터 준비, 컨테이너 빌드와 배포 설정은 [FinFlow 앱 안내](finflow/README.md)와 [실행·재현 안내](docs/reproduction.md)에 있습니다.
 
-## 6. 개인 기여와 부트캠프 기반 개발 배경
+## 6. 개발 범위와 개인 기여
 
-FinFlow는 BDAI 데이터 엔지니어링 부트캠프에서 배운 수집·검증·적재·임베딩·검색·자동화·배포 흐름을 금융 서비스에 적용하며 시작했습니다. 부트캠프의 일반 파이프라인 구조를 제가 독자 설계했다고 표현하지 않습니다.
+FinFlow는 차가원이 금융 입문자의 질문과 근거 확인 경험을 중심으로 기획·개발·운영하는 개인 프로젝트입니다.
 
-| 구분 | 내용 | 위치 |
+| 영역 | 수행한 작업 | 관련 코드와 기록 |
 |---|---|---|
-| 부트캠프 실습 기반 | 주가 API → 검증 → GCS → BigQuery, 텍스트 청킹 → 로컬 임베딩 → 코사인 유사도 검색 | [1주차](de-bootcamp-week1/README.md) · [2주차](de-bootcamp-week2/README.md) |
-| 금융 도메인 적용 | 금융위원회 시세 수집·검증·적재, 한국은행 금융용어를 69건에서 PDF 기반 770건으로 확장 | 주차별 폴더, [개발 이력](docs/development-history.md) |
-| 서비스 확장 | 금융용어 RAG, 뉴스 하이브리드 검색과 최근 의도 순위 보정, Gemini 재정렬·답변, Streamlit 화면 | [finflow/src/](finflow/src/) · [finflow/app_ui.py](finflow/app_ui.py) |
-| 운영 파이프라인 | 네이버 뉴스 수집부터 ChromaDB 스냅샷까지의 Job, 7일 증분 처리, 스냅샷 안전 교체, Scheduler 운영 | [finflow/scripts/](finflow/scripts/) |
-| 배포 | Cloud Build, Cloud Run 앱·Job, Secret Manager, 태그 URL 검증 후 트래픽 전환 | [finflow/README.md](finflow/README.md) |
+| 금융 지식 검색 | 한국은행 금융용어를 근거로 검색하고, Gemini로 질문 분석·재정렬·답변 생성 | [finflow/src/](finflow/src/) · [개발 이력](docs/development-history.md) |
+| 뉴스 연계 | 금융 뉴스 하이브리드 검색, 최근 소식 의도에 따른 순위 보정, 기사 날짜·원문 링크 표시 | [뉴스 검색](finflow/src/news_retriever.py) · [RAG](finflow/src/rag.py) |
+| 사용자 화면 | 검색 폼, 답변과 출처 표시, 모바일 화면, 실패 시 이전 답변 제거, 갱신 상태 안내 | [사용자 화면](finflow/app_ui.py) · [스타일](finflow/styles/main.css) |
+| 데이터 운영 | 뉴스 수집부터 스냅샷 게시까지의 파이프라인, 7일 증분 처리, 안전한 스냅샷 교체 | [finflow/scripts/](finflow/scripts/) |
+| 배포·검증 | Cloud Build와 Cloud Run 배포, 태그 URL 확인 후 트래픽 전환, 회귀 테스트와 브라우저 검증 | [앱 안내](finflow/README.md) · [테스트](finflow/tests/) |
 
-저장소 작성자와 개발 기록은 차가원입니다. AI 도구의 도움과 직접 수행한 범위는 실제 작업 내역에 맞춰 설명합니다. 강의자료 출처와 기여 범위는 [개인 기여와 다음 작업](docs/contribution-and-roadmap.md)에 정리했습니다.
+AI 도구의 도움과 직접 수행한 범위는 실제 작업 내역에 맞춰 설명합니다. 참고 자료와 세부 기여 범위는 [개인 기여와 다음 작업](docs/contribution-and-roadmap.md)에 정리했습니다.
 
 ## 다음 검증 목표
 
@@ -126,5 +126,4 @@ FinFlow는 BDAI 데이터 엔지니어링 부트캠프에서 배운 수집·검�
 | 측정 결과와 평가 계획 | [평가 기록](docs/evaluation.md) |
 | 실패 원인과 조치 | [트러블슈팅](docs/troubleshooting.md) |
 | 직접 확장한 부분과 출처 | [개인 기여](docs/contribution-and-roadmap.md) |
-| 과거 과정과 원문 기록 | [개발 이력](docs/development-history.md) · [이전 README](docs/archive/bootcamp-readme.md) |
-| 기반 실습 | [1주차](de-bootcamp-week1/README.md) · [2주차](de-bootcamp-week2/README.md) |
+| 과거 과정과 원문 기록 | [개발 이력](docs/development-history.md) |
