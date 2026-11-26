@@ -82,7 +82,10 @@ class NewsSnapshotStatus:
 
 
 _sync_lock = threading.Lock()
-_last_checked_at = 0.0
+# 마지막으로 GCS를 확인한 time.monotonic() 값. None이면 아직 한 번도 확인하지 않음.
+# monotonic()의 기준점은 플랫폼마다 달라 새 인스턴스에서는 0에 가까울 수 있으므로,
+# 0.0 같은 숫자로 '미확인'을 표현하면 시작 직후 확인 간격 동안 조회를 건너뛴다.
+_last_checked_at: float | None = None
 _current_generation: str | None = None
 _current_status = NewsSnapshotStatus(
     updated_at=None,
@@ -350,6 +353,18 @@ def _describe_sync_error(
     )
 
 
+def _is_check_due(now: float) -> bool:
+    """GCS 스냅샷을 다시 확인할 때가 됐는지 판단한다.
+
+    첫 호출(아직 확인한 적 없음)은 monotonic 값과 관계없이 즉시 확인하고,
+    그 이후에는 마지막 확인 시점부터 CHECK_INTERVAL_SECONDS가 지나야 확인한다.
+    """
+    if _last_checked_at is None:
+        return True
+
+    return now - _last_checked_at >= CHECK_INTERVAL_SECONDS
+
+
 def sync_latest_news_snapshot(
     force: bool = False,
 ) -> NewsSnapshotStatus:
@@ -370,7 +385,7 @@ def sync_latest_news_snapshot(
 
     if (
         not force
-        and now - _last_checked_at < CHECK_INTERVAL_SECONDS
+        and not _is_check_due(now)
     ):
         return _current_status
 
@@ -379,7 +394,7 @@ def sync_latest_news_snapshot(
 
         if (
             not force
-            and now - _last_checked_at < CHECK_INTERVAL_SECONDS
+            and not _is_check_due(now)
         ):
             return _current_status
 
