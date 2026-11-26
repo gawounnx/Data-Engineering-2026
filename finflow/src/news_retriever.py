@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -25,6 +26,21 @@ DEFAULT_NEWS_PATH = (
 CHROMA_PATH = PROJECT_ROOT / "data" / "chroma"
 NEWS_COLLECTION_NAME = "financial_news"
 MODEL_NAME = "kekeappa/kor-static-embedding-128"
+
+# 뉴스 파이프라인(load_news_to_chromadb.py)이 남기는 보관 기간과 같은 값을 쓴다.
+DEFAULT_NEWS_RETENTION_DAYS = 7
+
+
+def get_news_retention_days() -> int:
+    """뉴스 제공 범위(일). NEWS_RETENTION_DAYS가 비었거나 잘못되면 기본값."""
+    raw_value = os.getenv("NEWS_RETENTION_DAYS", "").strip()
+
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return DEFAULT_NEWS_RETENTION_DAYS
+
+    return value if value >= 1 else DEFAULT_NEWS_RETENTION_DAYS
 
 
 def open_chroma_client() -> Any:
@@ -308,7 +324,17 @@ def extract_query_keywords(
 def infer_search_days(
     query: str,
 ) -> int:
-    """질문의 기간 표현에 따라 뉴스 검색 범위를 정한다."""
+    """뉴스 검색 범위(일). 질문의 기간 표현을 따르되 제공 범위를 넘지 않는다."""
+    return min(
+        infer_requested_days(query),
+        get_news_retention_days(),
+    )
+
+
+def infer_requested_days(
+    query: str,
+) -> int:
+    """질문의 기간 표현에 따라 요청 기간(일)을 추정한다."""
     normalized = query.lower().replace(" ", "")
 
     explicit_patterns = [

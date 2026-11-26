@@ -52,11 +52,7 @@ def load_chunks(
             "chunks 형식이 올바르지 않습니다."
         )
 
-    if not chunks:
-        raise ValueError(
-            "임베딩할 뉴스 청크가 없습니다."
-        )
-
+    # 빈 목록은 '새 뉴스 없음'으로 허용한다 (증분 처리).
     return metadata, chunks
 
 
@@ -341,6 +337,18 @@ def main() -> None:
         )
 
         validate_chunks(chunks)
+
+        if not chunks:
+            # 새 뉴스가 없으면 모델을 불러오지 않고 빈 결과만 남긴다.
+            save_embeddings(
+                input_metadata=input_metadata,
+                records=[],
+                statistics_data={"embedding_count": 0},
+                elapsed_seconds=time.perf_counter() - started_at,
+                output_path=OUTPUT_PATH,
+            )
+            print("\n[뉴스 임베딩 건너뜀] 새로 처리할 뉴스 청크가 없습니다.")
+            return
 
         model = load_model(MODEL_NAME)
 

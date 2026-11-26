@@ -15,6 +15,7 @@ from src.news_snapshot import (
     NewsSnapshotStatus,
     sync_latest_news_snapshot,
 )
+from src.news_retriever import get_news_retention_days
 from src.rag import ask_finflow
 from utils.event_logger import send_event
 
@@ -756,7 +757,10 @@ def render_news_results(
 ) -> None:
     """관련 뉴스를 최대 6건, 2열 카드로 표시합니다."""
     if not news_articles:
-        st.info("검색된 관련 뉴스가 없습니다.")
+        st.info(
+            "검색된 관련 뉴스가 없습니다. "
+            f"뉴스는 최근 {get_news_retention_days()}일 안에 발행된 기사만 제공합니다."
+        )
         return
 
     visible_articles = news_articles[:6]
@@ -942,6 +946,10 @@ def render_search(status: NewsSnapshotStatus) -> None:
         </div>
         """,
         unsafe_allow_html=True,
+    )
+
+    st.caption(
+        f"뉴스 제공 범위: 최근 {get_news_retention_days()}일 안에 발행된 기사"
     )
 
     suggested_questions = [
