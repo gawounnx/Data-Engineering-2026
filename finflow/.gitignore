@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 service-account*.json
+.streamlit/secrets.toml
 *credentials*.json
 *.pem
 *.key
@@ -32,6 +33,8 @@ data/embeddings/
 data/terms/
 data/chroma/*
 !data/chroma/.gitkeep
+# 스냅샷 교체 중 임시 폴더 (download_chroma_snapshot.py)
+data/.chroma*
 
 # 백업 파일
 *.backup

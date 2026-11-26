@@ -16,6 +16,44 @@ ARCHIVE_PATH = Path("/tmp/chroma_snapshot.tar.gz")
 DEFAULT_BUCKET_NAME = "dbai-2026-project"
 DEFAULT_OBJECT_NAME = "finflow/vectorstore/chroma/latest.tar.gz"
 
+REQUIRED_COLLECTIONS = ("financial_terms", "financial_news")
+
+
+class InvalidSnapshotError(ValueError):
+    """업로드하면 안 되는 ChromaDB 상태."""
+
+
+def validate_chroma(chroma_path: Path = CHROMA_PATH) -> dict[str, int]:
+    """필수 컬렉션이 모두 있고 비어 있지 않은지 확인한다.
+
+    앱과 download_chroma_snapshot.py는 이 조건을 만족하지 않는 스냅샷을
+    거부하므로, 올리기 전에 같은 조건으로 막는다.
+    """
+    if not (chroma_path / "chroma.sqlite3").exists():
+        raise InvalidSnapshotError(
+            f"ChromaDB 파일이 없습니다: {chroma_path / 'chroma.sqlite3'}"
+        )
+
+    import chromadb
+
+    client = chromadb.PersistentClient(path=str(chroma_path))
+    counts: dict[str, int] = {}
+
+    for name in REQUIRED_COLLECTIONS:
+        try:
+            counts[name] = client.get_collection(name).count()
+        except Exception as error:
+            raise InvalidSnapshotError(
+                f"필수 컬렉션이 없습니다: {name}"
+            ) from error
+
+        if counts[name] == 0:
+            raise InvalidSnapshotError(
+                f"필수 컬렉션이 비어 있습니다: {name}"
+            )
+
+    return counts
+
 
 def create_snapshot() -> None:
     """ChromaDB 폴더를 tar.gz 파일로 압축한다."""
@@ -77,20 +115,22 @@ def upload_snapshot(
 
 def main() -> None:
     """ChromaDB 스냅샷 생성 및 업로드를 실행한다."""
-    bucket_name = os.getenv(
-        "FINFLOW_BUCKET",
-        DEFAULT_BUCKET_NAME,
-    ).strip()
+    # 환경 변수가 없거나 빈 값이면 기본값을 사용한다.
+    bucket_name = (
+        os.getenv("FINFLOW_BUCKET", "").strip()
+        or DEFAULT_BUCKET_NAME
+    )
 
-    object_name = os.getenv(
-        "CHROMA_SNAPSHOT_OBJECT",
-        DEFAULT_OBJECT_NAME,
-    ).strip()
+    object_name = (
+        os.getenv("CHROMA_SNAPSHOT_OBJECT", "").strip()
+        or DEFAULT_OBJECT_NAME
+    )
 
-    if not bucket_name:
-        raise ValueError(
-            "FINFLOW_BUCKET이 비어 있습니다."
-        )
+    counts = validate_chroma()
+    print(
+        "[정보] 업로드 전 검증 통과: "
+        + ", ".join(f"{name} {count:,}건" for name, count in counts.items())
+    )
 
     create_snapshot()
 

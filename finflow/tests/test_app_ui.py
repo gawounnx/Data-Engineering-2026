@@ -28,10 +28,12 @@ def test_app_without_data_shows_setup_notice(app):
 
     assert not at.exception
     errors = [element.value for element in at.error]
-    assert "검색 데이터 준비 필요" in errors
+    markdown = "\n".join(m.value for m in at.markdown)
+    assert "검색 데이터 준비 필요" in markdown  # 상단 갱신 상태 카드
+    assert "데이터 없음" in markdown
     assert any("financial_terms" in message for message in errors)
     assert len(at.text_input) == 0  # 검색 입력 대신 안내
-    assert [m.value for m in at.metric if m.label == "Status"] == ["No data"]
+    assert len(at.metric) == 0  # 고정 통계는 첫 화면에 두지 않는다
     assert not (local_chroma / "chroma.sqlite3").exists()
 
 
@@ -44,4 +46,7 @@ def test_app_with_data_shows_search(app):
     assert not at.exception
     assert len(at.error) == 0
     assert len(at.text_input) > 0
-    assert [m.value for m in at.metric if m.label == "Status"] == ["Healthy"]
+    # 로컬 데이터는 정기 갱신(08·12·18시) 판단 대상이 아니다.
+    markdown = "\n".join(m.value for m in at.markdown)
+    assert "로컬 데이터" in markdown
+    assert len(at.metric) == 0
