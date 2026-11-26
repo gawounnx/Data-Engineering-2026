@@ -511,8 +511,36 @@ def compact_html(markup: str) -> str:
     return re.sub(r">\s+<", "><", one_line)
 
 
-CITED_TERMS_PREFIX = "참고한 금융용어:"
-CITED_NEWS_PREFIX = "참고한 뉴스:"
+CITED_TERMS_LABEL = "참고한 금융용어"
+CITED_NEWS_LABEL = "참고한 뉴스"
+CITATION_LINE = re.compile(
+    rf"(?P<emphasis>\*{{1,2}})?(?P<label>{CITED_TERMS_LABEL}|{CITED_NEWS_LABEL})"
+    r"(?P<label_close>(?P=emphasis))?:(?P<items>.*)"
+)
+
+
+def match_citation_items(items: str, candidates: set[str]) -> tuple[set[str], bool]:
+    """쉼표를 포함한 제목을 우선 확인하고 모든 항목의 일치 여부를 반환합니다."""
+    parts = items.split(",")
+    max_width = max((candidate.count(",") + 1 for candidate in candidates), default=1)
+    matched: set[str] = set()
+    all_matched = True
+    start = 0
+
+    while start < len(parts):
+        for end in range(min(start + max_width, len(parts)), start, -1):
+            item = ",".join(parts[start:end]).strip()
+            if item not in candidates:
+                item = re.sub(r"^(\*{1,2})(.+)\1$", r"\2", item).strip()
+            if item in candidates:
+                matched.add(item)
+                start = end
+                break
+        else:
+            all_matched = False
+            start += 1
+
+    return matched, all_matched
 
 
 def split_answer_citations(
@@ -523,27 +551,31 @@ def split_answer_citations(
     """답변 끝의 '참고한 금융용어/뉴스' 줄을 본문에서 분리합니다.
 
     실제 검색 결과의 용어·기사 제목과 일치하는 항목만 인용으로 인정하고,
-    하나도 맞지 않는 줄은 정보를 잃지 않도록 본문에 그대로 둡니다.
+    일치하지 않는 항목이 있는 줄은 본문에 그대로 둡니다.
     """
     body_lines: list[str] = []
     cited_terms: set[str] = set()
     cited_titles: set[str] = set()
+    sources = {
+        CITED_TERMS_LABEL: (set(terms) - {""}, cited_terms),
+        CITED_NEWS_LABEL: (set(news_titles) - {""}, cited_titles),
+    }
 
     for line in answer.splitlines():
-        stripped = line.strip().replace("*", "")
+        citation = CITATION_LINE.fullmatch(line.strip())
+        if citation:
+            candidates, cited = sources[citation["label"]]
+            items = citation["items"]
+            emphasis = citation["emphasis"]
+            if emphasis and not citation["label_close"]:
+                if items.startswith(emphasis):
+                    items = items.removeprefix(emphasis)
+                else:
+                    items = items.removesuffix(emphasis)
 
-        if stripped.startswith(CITED_TERMS_PREFIX):
-            matched = {term for term in terms if term and term in stripped}
-            if matched:
-                cited_terms |= matched
-                continue
-
-        if stripped.startswith(CITED_NEWS_PREFIX):
-            matched = {
-                title for title in news_titles if title and title in stripped
-            }
-            if matched:
-                cited_titles |= matched
+            matched, all_matched = match_citation_items(items, candidates)
+            cited.update(matched)
+            if all_matched:
                 continue
 
         body_lines.append(line)
@@ -591,6 +623,21 @@ def strip_source_prefix(text: str, prefixes: tuple[str, ...]) -> str:
         if not line.startswith(("금융용어:", "뉴스 제목:"))
     ]
     return " ".join(kept).strip()
+
+
+def format_term_description(document: str, term: str) -> str:
+    """문서 앞의 용어명과 설명 머리말을 제거하고 본문을 표시용으로 정리합니다."""
+    text = document.strip()
+    if text.startswith("금융용어:"):
+        content = text.removeprefix("금융용어:").lstrip()
+        heading = re.match(rf"{re.escape(term)}(?=\s|설명:|$)", content) if term else None
+        if heading:
+            text = content[heading.end():].lstrip()
+        elif heading := re.match(r"[^\r\n]+?\s+(?=설명:)", content):
+            text = content[heading.end():]
+
+    text = text.removeprefix("설명:")
+    return " ".join(line.strip() for line in text.splitlines() if line.strip())
 
 
 def render_answer_html(answer: str, terms: list[str]) -> str:
@@ -700,7 +747,7 @@ def render_reference(
         or reference.get("content")
         or ""
     )
-    description = strip_source_prefix(document, ("설명:",))
+    description = format_term_description(document, term)
     preview = description
     if len(preview) > 160:
         preview = f"{preview[:160].rstrip()}…"

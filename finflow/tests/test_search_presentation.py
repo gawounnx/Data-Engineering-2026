@@ -54,7 +54,7 @@ def test_split_answer_citations_keeps_titles_with_commas():
     body, terms, titles = app_ui.split_answer_citations(
         EXAMPLE_RESULT["answer"],
         terms=["기준금리", "통화정책·파급경로", "금융통화위원회"],
-        news_titles=[TITLE_WITH_COMMA, "다른 기사"],
+        news_titles=[TITLE_WITH_COMMA, "한은", "다른 기사"],
     )
 
     assert "참고한" not in body
@@ -72,6 +72,60 @@ def test_unmatched_citation_line_stays_in_body():
 
     assert "참고한 뉴스: 검색 결과에 없는 기사" in body
     assert titles == set()
+
+
+def test_citations_match_whole_items_and_keep_partially_matched_lines():
+    answer = (
+        "본문\n"
+        "**참고한 금융용어:** **기준금리**, 실질금리 전망\n"
+        f"참고한 뉴스: 미확인 기사, {TITLE_WITH_COMMA}, 증시 동향 추가 보도"
+    )
+    body, terms, titles = app_ui.split_answer_citations(
+        answer,
+        terms=["금리", "기준금리", "실질금리", "금융용어"],
+        news_titles=["한은", TITLE_WITH_COMMA, "증시 동향", "뉴스"],
+    )
+
+    assert body == answer
+    assert terms == {"기준금리"}
+    assert titles == {TITLE_WITH_COMMA}
+
+
+def test_citations_can_mix_comma_titles_and_other_confirmed_titles():
+    body, terms, titles = app_ui.split_answer_citations(
+        f"본문\n**참고한 뉴스**: {TITLE_WITH_COMMA}, 증시 동향",
+        terms=[],
+        news_titles=["한은", TITLE_WITH_COMMA, "증시 동향"],
+    )
+
+    assert body == "본문"
+    assert titles == {TITLE_WITH_COMMA, "증시 동향"}
+
+
+@pytest.mark.parametrize(
+    ("document", "term", "expected"),
+    [
+        ("금융용어: 기준금리 설명: 정책금리입니다.", "기준금리", "정책금리입니다."),
+        ("금융용어: 기준금리 정책금리입니다.", "기준금리", "정책금리입니다."),
+        (
+            "금융용어: 기준금리\n설명: 정책금리입니다.\n금융용어: 콜금리와 비교합니다.",
+            "기준금리",
+            "정책금리입니다. 금융용어: 콜금리와 비교합니다.",
+        ),
+        (
+            "금융용어: 기준금리\n설명: 설명: 정책금리입니다.",
+            "검색 결과 1",
+            "설명: 정책금리입니다.",
+        ),
+        (
+            "설명에서는 금융용어: 콜금리를 예로 듭니다.",
+            "기준금리",
+            "설명에서는 금융용어: 콜금리를 예로 듭니다.",
+        ),
+    ],
+)
+def test_term_description_only_removes_leading_source_headers(document, term, expected):
+    assert app_ui.format_term_description(document, term) == expected
 
 
 @pytest.mark.parametrize(
@@ -189,3 +243,35 @@ def test_result_screen_shows_answer_then_sources(search_app):  # noqa: F811
     assert at.text_input(key="search_question").value == SUGGESTION
     assert '<h2 class="ff-answer-q">기준금리 질문</h2>' in page_text(at)
     assert spy.calls == ["기준금리 질문"]
+
+
+def test_result_screen_keeps_unconfirmed_citations_visible(search_app):  # noqa: F811
+    at, spy, _ = search_app
+    spy.responses["기준금리 질문"] = {
+        "answer": (
+            "정책금리에 관한 답변입니다.\n"
+            "참고한 금융용어: 기준금리, 실질금리 전망\n"
+            f"참고한 뉴스: {TITLE_WITH_COMMA}, 미확인 기사"
+        ),
+        "sources": [
+            {"term": "기준금리", "document": "금융용어: 기준금리 설명: 정책금리입니다."},
+            {
+                "term": "실질금리",
+                "document": "금융용어: 실질금리\n설명: 물가를 반영한 금리입니다.\n금융용어: 명목금리와 비교합니다.",
+            },
+        ],
+        "news_sources": [{"title": TITLE_WITH_COMMA}, {"title": "한은"}],
+    }
+
+    at.text_input(key="search_question").input("기준금리 질문")
+    at.button(key="analyze_button").click().run()
+
+    assert not at.exception
+    shown = re.sub(r"</?mark[^>]*>", "", page_text(at))
+    assert "참고한 금융용어: 기준금리, 실질금리 전망" in shown
+    assert "미확인 기사" in shown
+    assert '<p class="ff-item-body">정책금리입니다.</p>' in shown
+    assert "물가를 반영한 금리입니다. 금융용어: 명목금리와 비교합니다." in shown
+    assert '<span class="ff-item-title">기준금리</span><span class="ff-badge">답변에 사용</span>' in shown
+    assert f'{TITLE_WITH_COMMA}</span><span class="ff-badge">답변에 사용</span>' in shown
+    assert shown.count("답변에 사용") == 2
