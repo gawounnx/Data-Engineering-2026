@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import html
 import re
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 import streamlit as st
 
@@ -16,12 +14,14 @@ from src.news_snapshot import (
     sync_latest_news_snapshot,
 )
 from src.news_retriever import get_news_retention_days
+from src.pipeline_status import (
+    PipelineHealth,
+    PipelineState,
+    evaluate_pipeline,
+    format_kst,
+)
 from src.rag import ask_finflow
 from utils.event_logger import send_event
-
-
-KST = ZoneInfo("Asia/Seoul")
-PIPELINE_FRESHNESS_LIMIT = timedelta(minutes=90)
 
 
 def load_css(css_path: str = "styles/main.css") -> None:
@@ -87,29 +87,33 @@ def render_sidebar() -> str:
     return selected_page
 
 
-def is_pipeline_fresh(status: NewsSnapshotStatus) -> bool:
-    """최신 스냅샷이 매시간 갱신 기준을 충족하는지 확인합니다."""
-    if (
-        not status.data_ready
-        or status.updated_at is None
-        or status.error
-    ):
-        return False
-
-    return (
-        datetime.now(timezone.utc) - status.updated_at
-        <= PIPELINE_FRESHNESS_LIMIT
-    )
-
-
 def format_pipeline_updated_at(status: NewsSnapshotStatus) -> str:
     """최근 데이터 갱신 시각을 한국 시간으로 표시합니다."""
-    if status.updated_at is None:
-        return "확인할 수 없음"
+    return format_kst(status.updated_at)
 
-    return status.updated_at.astimezone(KST).strftime(
-        "%Y.%m.%d %H:%M"
+
+def describe_pipeline_schedule(health: PipelineHealth) -> str:
+    """마지막 갱신 시각과 다음 예정 시각을 한 줄로 만듭니다."""
+    return (
+        f"최근 갱신: {format_kst(health.last_updated)} · "
+        f"다음 예정: {format_kst(health.next_scheduled)}"
     )
+
+
+def render_pipeline_state(health: PipelineHealth) -> None:
+    """상태별 배지를 출력합니다. 데이터 없음과 확인 오류를 구분합니다."""
+    if health.state is PipelineState.ON_SCHEDULE:
+        st.success("정기 갱신 정상 (매일 08·12·18시)")
+    elif health.state is PipelineState.DELAYED:
+        st.warning(
+            f"뉴스 갱신 지연: {format_kst(health.missed_run)} 회차 미반영"
+        )
+    elif health.state is PipelineState.NO_DATA:
+        st.error("검색 데이터 준비 필요")
+    elif health.state is PipelineState.CHECK_ERROR:
+        st.error("최신 스냅샷 확인 오류 (기존 데이터로 서비스 중)")
+    else:
+        st.info("로컬 데이터 사용 중 (정기 갱신 대상 아님)")
 
 
 def render_topbar(status: NewsSnapshotStatus) -> None:
@@ -131,24 +135,15 @@ def render_topbar(status: NewsSnapshotStatus) -> None:
             unsafe_allow_html=True,
         )
 
+    health = evaluate_pipeline(status)
+
     with status_col:
-        if not status.data_ready:
-            st.markdown("**NO DATA**")
-            st.error("검색 데이터 준비 필요")
-        elif is_pipeline_fresh(status):
-            st.markdown("**LIVE**")
-            st.success("파이프라인 정상")
-        else:
-            st.markdown("**UPDATE DELAYED**")
-            st.warning("뉴스 업데이트 지연")
+        st.markdown(f"**{health.label}**")
+        render_pipeline_state(health)
+        st.caption(describe_pipeline_schedule(health))
 
-        st.caption(
-            "최근 데이터 갱신: "
-            f"{format_pipeline_updated_at(status)}"
-        )
-
-        if status.error:
-            st.caption(f"상태 확인 오류: {status.error}")
+        if health.detail:
+            st.caption(f"상태 확인 결과: {health.detail}")
 
 
 def render_home_statistics(status: NewsSnapshotStatus) -> None:
@@ -173,16 +168,7 @@ def render_home_statistics(status: NewsSnapshotStatus) -> None:
     with col4:
         with st.container(border=True):
             st.caption("Pipeline")
-            st.metric(
-                "Status",
-                (
-                    "No data"
-                    if not status.data_ready
-                    else "Healthy"
-                    if is_pipeline_fresh(status)
-                    else "Delayed"
-                ),
-            )
+            st.metric("Status", evaluate_pipeline(status).metric)
 
 
 def render_pipeline(status: NewsSnapshotStatus) -> None:
@@ -195,19 +181,13 @@ def render_pipeline(status: NewsSnapshotStatus) -> None:
 
     status_col, updated_col = st.columns([1, 3])
 
+    health = evaluate_pipeline(status)
+
     with status_col:
-        if not status.data_ready:
-            st.error("검색 데이터 없음")
-        elif is_pipeline_fresh(status):
-            st.success("전체 파이프라인 정상")
-        else:
-            st.warning("뉴스 파이프라인 업데이트 지연")
+        render_pipeline_state(health)
 
     with updated_col:
-        st.caption(
-            "최근 스냅샷: "
-            f"{format_pipeline_updated_at(status)}"
-        )
+        st.caption(describe_pipeline_schedule(health))
 
     st.write("")
 
@@ -306,10 +286,12 @@ def render_pipeline(status: NewsSnapshotStatus) -> None:
     with logs_tab:
         st.write(
             {
-                "상태": (
-                    "정상" if is_pipeline_fresh(status) else "지연"
-                ),
+                "상태": health.label,
                 "최근 스냅샷": format_pipeline_updated_at(status),
+                "다음 예정 갱신": format_kst(health.next_scheduled),
+                "미반영 회차": format_kst(health.missed_run)
+                if health.missed_run
+                else "없음",
                 "스냅샷 세대": status.generation or "확인 불가",
             }
         )

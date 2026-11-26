@@ -44,4 +44,5 @@ def test_app_with_data_shows_search(app):
     assert not at.exception
     assert len(at.error) == 0
     assert len(at.text_input) > 0
-    assert [m.value for m in at.metric if m.label == "Status"] == ["Healthy"]
+    # 로컬 데이터는 정기 갱신(08·12·18시) 판단 대상이 아니다.
+    assert [m.value for m in at.metric if m.label == "Status"] == ["Local"]
