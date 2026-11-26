@@ -910,31 +910,32 @@ def render_search(status: NewsSnapshotStatus) -> None:
         st.session_state.search_question = st.session_state.pending_suggestion
         st.session_state.pending_suggestion = ""
 
-    search_col, button_col = st.columns(
-        [8, 2],
-        gap="small",
-        vertical_alignment="bottom",
-    )
-
-    with search_col:
-        question = st.text_input(
-            "금융 질문",
-            key="search_question",
-            placeholder="금융용어나 시장 상황을 질문해 보세요.",
-            label_visibility="collapsed",
+    # 입력과 제출을 폼으로 묶는다.
+    # - 입력 후 바로 클릭해도 첫 클릭이 제출된다 (버튼을 비활성화하지 않음).
+    # - 입력창에서 Enter를 눌러도 제출된다.
+    # 빈 질문은 제출 후 아래에서 경고로 처리한다.
+    with st.form("search_form", border=False, enter_to_submit=True):
+        search_col, button_col = st.columns(
+            [8, 2],
+            gap="small",
+            vertical_alignment="bottom",
         )
 
-    cleaned_question = question.strip()
-    is_question_empty = not cleaned_question
+        with search_col:
+            question = st.text_input(
+                "금융 질문",
+                key="search_question",
+                placeholder="금융용어나 시장 상황을 질문해 보세요.",
+                label_visibility="collapsed",
+            )
 
-    with button_col:
-        submitted = st.button(
-            "분석하기",
-            key="analyze_button",
-            type="primary",
-            width="stretch",
-            disabled=is_question_empty,
-        )
+        with button_col:
+            submitted = st.form_submit_button(
+                "분석하기",
+                key="analyze_button",
+                type="primary",
+                width="stretch",
+            )
 
     st.markdown(
         """
@@ -988,6 +989,11 @@ def render_search(status: NewsSnapshotStatus) -> None:
                     "question_length": len(cleaned_question),
                 },
             )
+
+            # 새 질문을 제출하면 이전 결과부터 비운다.
+            # 이 질문이 실패했을 때 이전 질문의 답변·출처가
+            # 이 질문의 결과처럼 아래에 남지 않게 한다.
+            st.session_state.search_result = None
 
             try:
                 with st.spinner(
