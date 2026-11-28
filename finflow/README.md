@@ -164,6 +164,8 @@ python -m pytest tests -v
 
 테스트는 매번 임시 폴더에 작은 ChromaDB를 새로 만듭니다. 그래서 실제 데이터, GCS 인증, Gemini 키 없이 실행됩니다. GCS와 Gemini HTTP 전송은 mock으로 대체하고, 이벤트 로그 전송도 막습니다. 실제 Gemini 응답 품질과 질문 제출부터 답변까지의 화면 흐름은 자동 테스트에 포함하지 않습니다.
 
+18문항 실제 평가와 저장 검색어의 오프라인 재생은 [RAG 평가와 뉴스 검색 재현](scripts/rag/README.md)을 참고하세요.
+
 ## 4. 컨테이너 빌드와 배포
 
 > 2026-11-26에 Cloud Build로 앱 이미지를 빌드해 Cloud Run에 배포했습니다. 새 리비전은 트래픽 0% 태그 URL에서 확인한 뒤 전환했습니다(현재 `finflow-app-00014-kos`). 뉴스 Job은 Cloud Scheduler `finflow-news-daily`(매일 08·12·18시 KST)로 실행합니다. 검증 범위는 [루트 README](../README.md#4-확인된-구현검증-결과와-남은-한계)에 정리했습니다.

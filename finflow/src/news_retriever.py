@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import chromadb
 from sentence_transformers import SentenceTransformer
@@ -77,6 +78,30 @@ def open_chroma_client() -> Any:
     )
 
 VECTOR_CANDIDATE_COUNT = 30
+
+KOREA_TIME = ZoneInfo("Asia/Seoul")
+KOREAN_POLICY_ENTITY = re.compile(r"(?<![가-힣])(?:한국은행|한은|금통위|금융통화위원회)")
+RATE_OUTCOME_WORDS = ("인상", "인하", "동결", "유지")
+RATE_DECISION_WORDS = (*RATE_OUTCOME_WORDS, "결정", "발표", "정했", "정한", "올렸", "내렸")
+FORECAST_WORDS = (
+    "전망", "예상", "예고", "가능성", "할까", "무게", "여부", "예정", "촉각",
+    "검토", "유력", "앞두고",
+)
+UNCONFIRMED_OUTCOMES = (
+    "확정아냐", "확정아니", "확정되지", "확정안됐", "미확정", "사실무근",
+)
+EXCHANGE_RATE_MOVEMENTS = (
+    "상승", "하락", "아래", "위로", "떨어", "내려", "올라", "올랐", "내렸",
+    "반등", "보합", "마감",
+)
+POLICY_SUBJECT_SUFFIX = r"(?:의|가|이|는|은)?(?:(?:금통위|금융통화위원회)(?:의|가|는)?)?"
+RATE_DECISION_HEADLINE = re.compile(
+    POLICY_SUBJECT_SUFFIX + r"(?:기준|정책)금리(?:를|는)?(?:연)?(?:\d+(?:로|에서)?)?"
+    r"(?:인상|인하|동결|유지)"
+)
+FX_POLICY_HEADLINE = re.compile(
+    POLICY_SUBJECT_SUFFIX + r"(?:기준|정책)?금리(?:결정|발표|인상|인하|동결|유지)(?:직후|이후|후|뒤|에|여파)"
+)
 
 STOPWORDS = {
     "요즘",
@@ -598,6 +623,8 @@ def search_keyword_candidates(
     keywords: list[str],
     candidate_count: int = 30,
     newest_first: bool = False,
+    *,
+    priority_article_ids: frozenset[str] = frozenset(),
 ) -> list[dict[str, Any]]:
     """JSON 뉴스에서 키워드 일치 후보를 찾는다.
 
@@ -611,7 +638,7 @@ def search_keyword_candidates(
             keywords=keywords,
         )
 
-        if score <= 0:
+        if score <= 0 and str(article.get("article_id")) not in priority_article_ids:
             continue
 
         candidates.append(
@@ -636,6 +663,7 @@ def search_keyword_candidates(
     else:
         candidates.sort(
             key=lambda item: (
+                str(item["article"].get("article_id")) in priority_article_ids,
                 item["keyword_score"],
                 parse_published_at(
                     item["article"].get(
@@ -649,15 +677,119 @@ def search_keyword_candidates(
     return candidates[:candidate_count]
 
 
+def requested_news_day(question: str) -> date | None:
+    """질문에 날짜가 있으면 한국시간 기준의 날짜로 해석한다."""
+    numeric = re.search(r"(?<!\d)(\d{4})\s*[-./]\s*(\d{1,2})\s*[-./]\s*(\d{1,2})(?!\d)", question)
+    if numeric:
+        return date(*map(int, numeric.groups()))
+
+    today = datetime.now(KOREA_TIME).date()
+    korean = re.search(r"(?:(\d{4})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일", question)
+    if korean:
+        year, month, day = korean.groups()
+        return date(int(year) if year else today.year, int(month), int(day))
+    for word, offset in (("어제", -1), ("오늘", 0), ("내일", 1)):
+        if word in question:
+            return today + timedelta(days=offset)
+    return None
+
+
+def find_event_evidence(
+    articles: list[dict[str, Any]],
+    question: str,
+    search_days: int,
+) -> frozenset[str]:
+    """금통위 결정과 직후 환율 관측 질문에 직접 답하는 기사 ID를 찾는다."""
+    question_text = re.sub(r"[^가-힣0-9]", "", question)
+    if (
+        not KOREAN_POLICY_ENTITY.search(question)
+        or "금리" not in question_text
+        or not any(word in question_text for word in RATE_DECISION_WORDS)
+        or any(word in question_text for word in FORECAST_WORDS)
+        or re.search(r"다음(?:번)?(?:금통위|금융통화위원회|회의|기준금리|정책금리|결정|한국은행)|향후", question_text)
+    ):
+        return frozenset()
+
+    exchange_rate = "원달러" in question_text and "환율" in question_text
+    if not exchange_rate and (
+        not any(word in question_text for word in ("기준금리", "정책금리"))
+        or "환율" in question_text
+    ):
+        return frozenset()
+
+    try:
+        requested_day = requested_news_day(question)
+    except ValueError:
+        return frozenset()
+    if exchange_rate and (
+        any(word in question_text for word in ("직전", "결정전", "발표전"))
+        or (
+            requested_day is None
+            and not any(word in question_text for word in ("직후", "이후", "당시"))
+        )
+    ):
+        return frozenset()
+
+    matched_ids = set()
+    for article in articles:
+        article_id = article.get("article_id")
+        title = str(article.get("title", ""))
+        headline, *rest = re.split(r"[…⋯]|[.·]{2,}", title, maxsplit=1)
+        compact_headline = re.sub(r"[^가-힣0-9]", "", headline)
+        continuation = re.sub(r"[^가-힣0-9]", "", rest[0]) if rest else ""
+        if (
+            not article_id
+            or "?" in headline
+            or "？" in headline
+            or any(word in compact_headline for word in FORECAST_WORDS)
+            or continuation.startswith(FORECAST_WORDS)
+            or any(word in compact_headline + continuation for word in UNCONFIRMED_OUTCOMES)
+        ):
+            continue
+        entity = KOREAN_POLICY_ENTITY.search(headline)
+        if not entity:
+            continue
+        policy_headline = re.sub(r"[^가-힣0-9]", "", headline[entity.end():])
+        if exchange_rate:
+            if (
+                "원달러환율" not in compact_headline
+                or not FX_POLICY_HEADLINE.match(policy_headline)
+                or not any(word in compact_headline for word in EXCHANGE_RATE_MOVEMENTS)
+            ):
+                continue
+        elif not RATE_DECISION_HEADLINE.match(policy_headline):
+            continue
+        elif not (
+            re.search(r"\d+(?:\.\d+)?\s*%", headline)
+            or any(
+                f"{word}{ending}" in str(article.get("summary", ""))
+                for word in RATE_OUTCOME_WORDS
+                for ending in ("했다", "하였다", "하기로")
+            )
+        ):
+            continue
+
+        published_at = article.get("published_at")
+        if requested_day and parse_published_at(published_at).astimezone(KOREA_TIME).date() != requested_day:
+            continue
+        if is_excluded_article(title) or calculate_recency_score(published_at, search_days) < 0:
+            continue
+        matched_ids.add(str(article_id))
+    return frozenset(matched_ids)
+
+
 def search_financial_news(
     query: str,
     top_k: int = 5,
     news_path: str | Path = DEFAULT_NEWS_PATH,
     prefer_recent: bool | None = None,
+    *,
+    original_query: str | None = None,
 ) -> list[dict[str, Any]]:
     """금융뉴스를 하이브리드 방식으로 검색한다.
 
     prefer_recent가 None이면 query의 표현(최근·오늘 등)으로 판단한다.
+    original_query가 주어지면 사용자가 명시한 사건과 날짜를 근거 선택에 사용한다.
     """
     clean_query = query.strip()
 
@@ -688,6 +820,10 @@ def search_financial_news(
     search_days = infer_search_days(
         clean_query
     )
+    priority_article_ids = (
+        find_event_evidence(articles, original_query, search_days)
+        if original_query else frozenset()
+    )
 
     vector_candidates = search_vector_candidates(
         query=clean_query,
@@ -698,6 +834,7 @@ def search_financial_news(
         articles=articles,
         keywords=keywords,
         candidate_count=VECTOR_CANDIDATE_COUNT,
+        priority_article_ids=priority_article_ids,
     )
 
     if prefer_recent is None:
@@ -955,7 +1092,17 @@ def search_financial_news(
         reverse=True,
     )
 
-    return scored_articles[:top_k]
+    # 직접 근거 두 건까지 먼저 보여주고, 나머지는 기존 점수순을 유지한다.
+    evidence = [
+        article for article in scored_articles
+        if article["article_id"] in priority_article_ids
+    ][:min(2, top_k)]
+    selected_ids = {article["article_id"] for article in evidence}
+    remaining = [
+        article for article in scored_articles
+        if article["article_id"] not in selected_ids
+    ]
+    return (evidence + remaining)[:top_k]
 
 
 def format_news_context(

@@ -214,6 +214,7 @@ def ask_finflow(
     news_results = search_financial_news(
         query=news_query,
         top_k=news_top_k,
+        original_query=clean_query,
         prefer_recent=(
             has_recency_intent(clean_query)
             or has_recency_intent(news_query)
