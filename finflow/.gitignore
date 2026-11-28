@@ -29,6 +29,8 @@ data/raw/
 data/processed/
 data/chunks/
 data/embeddings/
+# 금융용어 생성 파이프라인 작업 폴더 (원본 PDF·중간 산출물·빌드 ChromaDB)
+data/terms/
 data/chroma/*
 !data/chroma/.gitkeep
 # 스냅샷 교체 중 임시 폴더 (download_chroma_snapshot.py)

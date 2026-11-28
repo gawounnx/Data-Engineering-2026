@@ -1,0 +1,4 @@
+# 금융용어 생성 파이프라인(scripts/terms/) 전용 의존성
+# 앱·뉴스 Job 이미지에는 넣지 않는다.
+-r requirements.txt
+pdfplumber==0.11.10

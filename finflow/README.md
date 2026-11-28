@@ -85,21 +85,15 @@ python scripts/pipelines/run_news_pipeline.py
 
 > 스냅샷이 없는 새 버킷에서 실행하면 `financial_news`만 만들어집니다. 이 상태로는 앱이 "데이터 준비 필요"를 표시합니다.
 
-### 2-C. 금융용어 컬렉션을 처음부터 생성 (현재 저장소 범위 밖)
+### 2-C. 금융용어 컬렉션을 처음부터 생성
 
-`financial_terms` 생성 스크립트는 아직 이 저장소에 포함되지 않았습니다. 원본 작업 환경의 `de-bootcamp-week1/`에 있으며 순서는 다음과 같습니다.
+`financial_terms` 생성 스크립트는 `scripts/terms/`에 있습니다. 실행 방법과 검증 결과는 [scripts/terms/README.md](scripts/terms/README.md)를 참고합니다.
 
-| 단계 | 스크립트 (week1 기준) | 입력 → 출력 | 추가 의존성 |
-|---|---|---|---|
-| 1. PDF 텍스트 추출 | `scripts/parser/extract_financial_terms.py` | 한국은행 「2026 경제금융용어 800선」 PDF → `financial_terms_pages.json` | `pdfplumber` |
-| 2. 용어 파싱 | `scripts/parser/parse_financial_terms_v3.py` | → `financial_terms_800_v3.json` | |
-| 3. 정제 | `scripts/preprocessing/clean_financial_terms.py` | → `financial_terms_800_v4_cleaned.json` | |
-| 4. BigQuery 적재 | `scripts/bigquery/load_financial_terms.py` | → `<프로젝트>.<데이터셋>.financial_terms` | `GCP_PROJECT_ID`, `BQ_DATASET_ID` |
-| 5. 청킹 | `scripts/chunking/create_financial_term_chunks.py` | BigQuery → `financial_terms_chunks.json` | |
-| 6. 임베딩 | `scripts/embedding/create_financial_term_embeddings.py` | → `financial_terms_embeddings.json` | `kekeappa/kor-static-embedding-128` (앱과 동일해야 함) |
-| 7. ChromaDB 적재 | `scripts/chromadb/load_financial_terms.py` | → `data/chroma` `financial_terms` 컬렉션 | |
+순서: PDF 추출 → 파싱 → 정제 → BigQuery 적재 → 청킹 → 임베딩 → ChromaDB 적재
 
-원본 PDF는 저작권 확인 전까지 저장소에 넣지 않습니다.
+- 4단계 BigQuery 적재는 **테이블 전체를 덮어씁니다(WRITE_TRUNCATE).** 기본은 dry-run이고, 실제로 쓰려면 `--execute --confirm-table <테이블 ID>`가 필요합니다.
+- 7단계 ChromaDB 적재의 기본 저장 경로는 서비스 DB(`data/chroma`)와 분리된 `data/terms/chroma`입니다. 서비스 DB에 쓰려면 `--allow-service-db`가 필요하고, 기존 컬렉션을 초기화하려면 `--replace`가 필요합니다.
+- 추가 의존성은 `requirements-terms.txt`(pdfplumber)에 있습니다. 원본 PDF는 저작권 확인 전까지 저장소에 넣지 않습니다.
 
 ### 앱의 데이터 상태 판단
 
@@ -154,6 +148,7 @@ python -m pytest tests -v
 | 파일 | 내용 |
 |---|---|
 | `tests/test_news_snapshot.py` | 데이터 준비 상태 판단 시나리오 10개. 빈 clone, 빈 DB, 빈 컬렉션, 정상 로컬 데이터, 인증 실패 2종, 스냅샷 부재, 용어 누락 스냅샷 거부, 정상 스냅샷 적용과 이후 실패 시 유지 |
+| `tests/test_terms_pipeline.py` | 금융용어 생성 파이프라인의 운영 데이터 보호. BigQuery 적재가 기본 dry-run이고 확인 문자열이 맞을 때만 덮어쓰는지, 청킹의 BigQuery 모드가 읽기만 하는지, 오프라인 청킹 모드의 열·순서, ChromaDB 적재의 서비스 DB 보호와 `--replace` 초기화 범위 |
 | `tests/test_snapshot_extract.py` | 스냅샷 압축 해제 보안 검증. 일반 파일과 디렉터리만 허용하는지 확인. 경로 탈출(`..`, 절대 경로, Windows 경로), 심볼릭 링크, 하드 링크, 장치 파일, FIFO, 링크를 통한 우회 쓰기를 거부하는지 확인. 거부된 스냅샷은 적용하지 않고 정리하는지, 숫자가 아닌 generation을 거부하는지 확인 |
 | `tests/test_app_ui.py` | Streamlit AppTest로 데이터 없음과 있음 각각의 화면 검증 |
 | `tests/test_download_snapshot_script.py` | `download_chroma_snapshot.py`가 다운로드·압축 해제·검증·교체 중 어느 단계에서 실패해도 기존 `data/chroma/`를 보존하는지, `chroma/` 밖 경로와 심볼릭 링크를 거부하는지 확인 |
