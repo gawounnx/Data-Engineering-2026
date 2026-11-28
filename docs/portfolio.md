@@ -18,16 +18,16 @@
 | 용어는 의미 검색, 수치는 SQL 조회 | 뜻이 비슷한 질문과 정확한 수치 조회의 요구가 다름 | 규모가 작으면 SQLite·키워드 검색이 더 단순함 |
 | 원본을 GCS에 보관 | 수집 시점과 원문을 따라가 재처리하기 위함 | 보관만으로 적재 중복이나 원자성이 보장되지는 않음 |
 | Streamlit으로 시연 | 질문·근거·답변 경험을 빠르게 확인하기 위함 | 소스는 공개됨. 질문→답변 전체 흐름과 사용성 검증 필요 |
-| 고정 질문으로 평가 시작 | 실패 유형을 재현하고 작은 변경을 비교하기 위함 | 아직 실행 결과가 없는 평가 계획 |
+| 고정 질문으로 평가 시작 | 실패 유형을 재현하고 작은 변경을 비교하기 위함 | [별도 PR #13의 평가 기록](https://github.com/gawounnx/finflow/pull/13) |
 
 ## 3. 직접 확장한 부분과 근거
 
-부트캠프에서 배운 일반 파이프라인을 바탕으로 금융 도메인에 맞는 API 응답 처리·검증·적재를 적용했습니다. 현재 저장소에서는 다음을 코드로 확인할 수 있습니다.
+부트캠프에서 배운 파이프라인을 바탕으로 금융 데이터에 맞는 API 응답 처리·검증·적재를 적용했습니다. 다음 링크는 당시 개발 기록입니다.
 
-- [주가 수집](../de-bootcamp-week1/scripts/day1_stock_crawler.py): 금융위원회 중첩 응답 처리, 인증키 환경변수, 페이지 수집, HTTP 이후 API 오류 검사.
-- [시세 검증](../de-bootcamp-week1/scripts/data_quality.py): 필수 필드·건수·숫자 변환 가능 여부 확인.
-- [클라우드 적재](../de-bootcamp-week1/scripts/day2_upload_stock_to_gcp.py): 업로드 전 검증, GCS 원본, BigQuery 시세와 적재 이력.
-- [금융용어 검색](../de-bootcamp-week1/scripts/fin_terms_query.py): 입력된 벡터 JSON과 질문의 코사인 유사도 비교.
+- [주가 수집](https://github.com/gawounnx/finflow/blob/cc79d4ef14a972b5f2c0a7bfc2a74830d5d45508/de-bootcamp-week1/scripts/day1_stock_crawler.py)에서 금융위원회 중첩 응답 처리, 환경 변수, 페이지 수집, HTTP 응답 이후 API 오류 검사를 적용했습니다.
+- [시세 검증](https://github.com/gawounnx/finflow/blob/cc79d4ef14a972b5f2c0a7bfc2a74830d5d45508/de-bootcamp-week1/scripts/data_quality.py)에서는 필수 필드·건수·숫자 변환 가능 여부를 확인했습니다.
+- [클라우드 적재](https://github.com/gawounnx/finflow/blob/cc79d4ef14a972b5f2c0a7bfc2a74830d5d45508/de-bootcamp-week1/scripts/day2_upload_stock_to_gcp.py)에서는 업로드 전 검증과 GCS 원본, BigQuery 시세·적재 이력을 분리했습니다.
+- [초기 금융용어 검색](https://github.com/gawounnx/finflow/blob/cc79d4ef14a972b5f2c0a7bfc2a74830d5d45508/de-bootcamp-week1/scripts/fin_terms_query.py)은 벡터 JSON과 질문의 코사인 유사도를 사용했습니다.
 
 후속 확장은 [finflow/](../finflow/README.md)에서 확인할 수 있습니다.
 
@@ -35,7 +35,7 @@
 - [뉴스 파이프라인](../finflow/scripts/pipelines/run_news_pipeline.py)과 [DAG](../finflow/dags/naver_news_pipeline_dag.py): 수집, 검증, GCS, BigQuery, 청킹, 임베딩, ChromaDB 스냅샷.
 - [데이터 준비 상태 판단](../finflow/src/news_snapshot.py)과 [테스트](../finflow/tests/): 빈 DB를 정상으로 판단하지 않음, 인증 실패 처리, 안전하지 않은 스냅샷 압축 항목 거부.
 
-청킹·임베딩 기반 코드는 페르소나 실습과 함께 남아 있습니다. 모든 코드를 독자 설계했다고 표현하지 않으며 줄 단위 독립 기여율을 산정하지 않습니다. 금융용어 PDF 파서와 ChromaDB 로더는 아직 저장소에 반영하지 않았습니다.
+청킹과 임베딩 구조의 출발점은 페르소나 실습입니다. 금융용어 PDF 파서와 ChromaDB 로더를 포함한 현재 재현 경로는 [금융용어 파이프라인](../finflow/scripts/terms/README.md)에 있습니다. 직접 확장한 범위는 [개인 기여와 출처](contribution-and-roadmap.md)에 정리했습니다.
 
 ## 4. 관찰된 결과와 해석
 

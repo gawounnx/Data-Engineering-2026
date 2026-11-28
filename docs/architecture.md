@@ -2,13 +2,13 @@
 
 ## 실제 확인 범위
 
-공개 코드는 두 부분으로 나뉩니다. 주차별 폴더에는 초기 금융 API 수집, 데이터 검증, GCS/BigQuery 적재, 전처리, 임베딩·검색 실습이 있습니다. [finflow/](../finflow/README.md)에는 최신 앱, 뉴스 파이프라인, Airflow DAG, 배포 설정이 있습니다. 아래 구조는 코드 기준입니다. 2026-11-26에 앱과 뉴스 Job을 Cloud Run에서 실행한 기록이 있으며, 검증 범위는 [루트 README](../README.md#4-확인된-구현검증-결과와-남은-한계)에 정리했습니다.
+앱, 금융용어·뉴스 파이프라인, Airflow DAG와 배포 설정은 [FinFlow 앱 안내](../finflow/README.md)에 정리돼 있습니다. 아래 구조는 코드 기준입니다. 2026-11-26에 앱과 뉴스 Job을 Cloud Run에서 실행한 기록과 검증 범위는 [검증 기록](../README.md#검증)을 참고합니다.
 
 ## 데이터 경로
 
 | 경로 | 처리 | 저장·소비 |
 |---|---|---|
-| 금융용어 | 초기 웹 JSON 수집 → PDF 추출·파싱으로 확장 → 정제·청킹·임베딩 (생성 스크립트 미반영) | BigQuery 용어 테이블 / ChromaDB financial_terms / RAG |
+| 금융용어 | 한국은행 PDF 추출·파싱·정제 → 청킹·임베딩. [금융용어 파이프라인](../finflow/scripts/terms/README.md) | BigQuery 용어 테이블 / ChromaDB financial_terms / RAG |
 | 주식 시세 | API 응답의 필수 필드·건수·숫자 검증 → 수치 변환 | GCS 원본 / BigQuery stock_prices (현재 앱에는 미연결) |
 | 금융 뉴스 | 네이버 검색 API → 기사 검증·중복 제거 → BigQuery에서 읽어 청킹·임베딩 | 날짜별 GCS 원본 / BigQuery financial_news / ChromaDB financial_news |
 | 질문 | 질문 분석 → 금융용어 벡터 검색·재정렬 → 뉴스 하이브리드(키워드·벡터·최신성) 검색 → Gemini 답변 | Streamlit 답변·용어 근거·뉴스 출처 표시 |
