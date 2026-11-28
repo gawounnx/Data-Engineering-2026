@@ -138,8 +138,8 @@ DART API → 수집 → 전처리 → 청킹 → 임베딩 → ChromaDB dart
 
 | 주차 | 주제 | 상태 | 폴더 |
 |------|------|------|------|
-| 1주차 | API 수집 → GCS 업로드 → BigQuery 적재 | ✅ 완료 | [de-bootcamp-week1/](../../de-bootcamp-week1) |
-| 2주차 | 데이터 전처리 · 청킹 · 임베딩 | ✅ 완료 | [de-bootcamp-week2/](../../de-bootcamp-week2) |
+| 1주차 | API 수집 → GCS 업로드 → BigQuery 적재 | ✅ 완료 | [당시 공개 기록](https://github.com/gawounnx/finflow/tree/cc79d4ef14a972b5f2c0a7bfc2a74830d5d45508/de-bootcamp-week1) |
+| 2주차 | 데이터 전처리 · 청킹 · 임베딩 | ✅ 완료 | [당시 공개 기록](https://github.com/gawounnx/finflow/tree/cc79d4ef14a972b5f2c0a7bfc2a74830d5d45508/de-bootcamp-week2) |
 | 3주차 | ChromaDB 적재 · Airflow DAG 자동화 | ⏳ 예정 | - |
 | 4주차 | RAG 검색 + Gemini · Streamlit 대시보드 | ⏳ 예정 | - |
 | 5주차 | Cloud Run 배포 · 최종 프로젝트 | ⏳ 예정 | - |

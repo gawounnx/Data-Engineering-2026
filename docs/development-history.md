@@ -53,9 +53,9 @@ Cloud Build 이미지 생성, Secret Manager 설정, 뉴스 Job 배포 기록이
 - 스냅샷 압축 해제 보안
 - 자동 테스트
 
-현재 GitHub main에는 de-bootcamp-week1, de-bootcamp-week2, finflow와 별도 그래픽스 노트북이 있습니다. 아직 로컬에만 있는 것은 다음과 같습니다.
-- week3, week4 실습
-- 1주차 폴더의 금융용어 PDF 파싱·정제·청킹·임베딩·ChromaDB 적재 스크립트
+이후 그래픽스 노트북은 저장소에서 정리했습니다. 1·2주차의 공개 실습 기록은 [정리 전 커밋](https://github.com/gawounnx/finflow/tree/cc79d4ef14a972b5f2c0a7bfc2a74830d5d45508)에 남아 있습니다. 3·4주차 원본은 로컬에 있습니다.
+
+2026-11-28에 PR #6으로 금융용어 PDF 추출·파싱·정제·청킹·임베딩·ChromaDB 적재 코드를 FinFlow에 반영했습니다. [실행과 검증 범위](../finflow/scripts/terms/README.md)
 
 다음은 의도적으로 제외했습니다.
 - 비밀 값(`.env`, Airflow 키)

@@ -2,9 +2,7 @@
 
 ## 현재 실행 가능한 범위
 
-최신 FinFlow 앱, 뉴스 파이프라인, DAG, 배포 설정은 [finflow/](../finflow/README.md)에 있습니다. 벡터 DB 같은 생성 데이터는 Git에 포함하지 않습니다. 그래서 실행 전에 [finflow/README.md](../finflow/README.md)의 "데이터 준비" 절차로 ChromaDB를 내려받거나 만들어야 합니다. 금융용어 컬렉션을 처음부터 만드는 스크립트는 아직 저장소에 없으며, 현재는 GCS 스냅샷으로만 복원할 수 있습니다.
-
-초기 실습의 환경 안내는 [macOS](../de-bootcamp-week1/SETUP_MAC.md), [Windows](../de-bootcamp-week1/SETUP_WINDOWS.md), [1주차](../de-bootcamp-week1/README.md), [2주차](../de-bootcamp-week2/README.md)를 참고합니다.
+앱, 뉴스 파이프라인, DAG, 배포 설정은 [FinFlow 앱 안내](../finflow/README.md)에 있습니다. 생성된 벡터 DB는 GCS 스냅샷으로 복원합니다. 한국은행 PDF에서 금융용어 컬렉션을 재현하는 코드도 [금융용어 파이프라인](../finflow/scripts/terms/README.md)에 있습니다.
 
 실행 명령은 저장소 이름이 바뀌어도 쓸 수 있도록 현재 checkout 디렉터리를 기준으로 합니다.
 
@@ -32,19 +30,9 @@ streamlit run app_ui.py
 python -m pytest tests -v
 ```
 
-## 초기 수집·적재 코드 확인
+## 금융용어 색인 오프라인 재현
 
-전제: Python과 가상환경을 준비하고 저장소 루트에서 실행합니다.
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -r de-bootcamp-week1/scripts/requirements.txt
-python de-bootcamp-week1/scripts/day1_stock_crawler.py --help
-python de-bootcamp-week1/scripts/day2_upload_stock_to_gcp.py --help
-```
-
-Windows 활성화는 해당 환경 안내를 따릅니다. `--help`는 옵션 확인일 뿐이며 수집·적재 성공을 검증하지 않습니다. 실제 클라우드 실행 전에 API 키, ADC 인증, 대상 프로젝트, 버킷, 데이터셋, 권한을 준비합니다.
+`finflow/`에서 `requirements-terms.txt`를 설치합니다. 한국은행 「2026 경제금융용어 800선」 PDF를 준비하고 `TERMS_PDF_PATH`와 별도 작업 경로를 지정합니다. 추출 → 파싱 → 정제 → `chunk_terms.py --from-cleaned-json` → 임베딩 → ChromaDB 적재 순서로 실행합니다. 캐시된 임베딩 모델을 사용하면 클라우드 인증 없이 재현할 수 있으며, 기본 대상은 `data/terms/chroma`입니다. [명령과 입력 준비](../finflow/scripts/terms/README.md)
 
 ## 저장소에 반영된 파일
 
@@ -57,7 +45,7 @@ Windows 활성화는 해당 환경 안내를 따릅니다. `--help`는 옵션 �
 | 배포 | `finflow/Dockerfile.app`, `Dockerfile.news-job`, `cloudbuild.*.yaml`, `.dockerignore`, `.gcloudignore`, `scripts/start_streamlit.py` | 반영 |
 | 설정 | `finflow/.env.example` (값 없는 변수 이름만) | 반영 |
 | 테스트 | `finflow/tests/` | 반영 |
-| 금융용어 생성 | PDF 파서, 정제, 청킹, 임베딩, ChromaDB 로더 | **미반영.** 단계는 [finflow/README.md 2-C](../finflow/README.md)에 정리 |
+| 금융용어 생성 | `finflow/scripts/terms/`, `finflow/requirements-terms.txt` | [PR #6의 실행 방법과 한계](../finflow/scripts/terms/README.md) |
 
 비밀 값이 있는 `.env`, ADC·서비스 계정 JSON, 개인 정보가 포함된 원본 로그, 가상환경과 캐시, Airflow 런타임(`airflow.cfg`, 메타 DB, 로그)은 제외했습니다. 원본 PDF, 기사, 강의 ZIP은 재배포 조건을 확인하기 전에는 저장소에 복제하지 않습니다. 벡터 DB 바이너리는 Git에 넣지 않고 GCS 스냅샷으로 관리합니다.
 
@@ -66,8 +54,8 @@ Windows 활성화는 해당 환경 안내를 따릅니다. `--help`는 옵션 �
 | 재현 기준 | 상태 |
 |---|---|
 | 1. 빈 환경에서 의존성 설치와 설정 파일 준비 | 절차는 문서화됨. 새 가상환경에서 처음부터 설치해 보지는 않음 |
-| 2. 원본 출처 → 정제 → 청킹 → 임베딩 → ChromaDB count 재현 | 뉴스는 Cloud Run Job으로 운영 실행 중(2026-11-26 실행 성공 기록). 금융용어는 생성 스크립트 미반영으로 재현 불가 |
-| 3. 정상·모호·근거 부족 질문으로 검색 근거와 답변 확인 | 정상 질문만 확인(로컬 2건, 운영 앱 1건). 모호·근거 부족 질문은 미검증 |
+| 2. 원본 출처 → 정제 → 청킹 → 임베딩 → ChromaDB count 재현 | 뉴스는 2026-11-26 Cloud Run Job 실행 성공 기록이 있습니다. 금융용어는 오프라인 경로로 용어 770개와 청크 1,121개를 확인했습니다. |
+| 3. 정상·모호·근거 부족 질문으로 검색 근거와 답변 확인 | 운영 앱 확인은 정상 질문 1건입니다. 고정 질문 세트는 [평가 CLI](../finflow/scripts/rag/README.md)로 실행하며, 실제 실행 범위는 [PR #13](https://github.com/gawounnx/finflow/pull/13)에 기록했습니다. |
 | 4. 같은 뉴스 입력을 두 번 실행해 중복 적재 여부 확인 | 과거 기록만 있음(신규 0건). 재실행하지 않음 |
 | 5. 컨테이너 빌드 후 PORT, Secret, 데이터 로딩 확인 | 2026-11-26 Cloud Build로 빌드해 Cloud Run에 배포, 태그 URL에서 화면과 데이터 로딩 확인 |
 | 6. 공개 앱에서 같은 질문을 다시 실행하고 버전·시간·결과 기록 | 일부 확인. 리비전 `00010-buq`에서 질문 1건과 응답 시간(약 35초) 기록. 같은 질문 반복 비교는 미실행 |
