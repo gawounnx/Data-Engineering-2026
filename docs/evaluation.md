@@ -28,7 +28,7 @@
 
 ## 고정 질문 평가 설계
 
-아래는 초기 평가 설계입니다. 이후 고정 18문항 평가와 PR 브랜치의 실제 Gemini 확인 결과는 [별도 PR #13](https://github.com/gawounnx/finflow/pull/13)에 기록했습니다.
+아래는 초기 평가 설계입니다. 현재 저장소에 18문항 세트와 평가 CLI가 있습니다. 초기 18문항 평가와 최종 브랜치의 실제 Gemini 3문항 확인 결과는 PR #13에 기록했습니다. [평가 실행과 재현](../finflow/scripts/rag/README.md), [PR #13](https://github.com/gawounnx/finflow/pull/13)
 
 한 번에 큰 평가 시스템을 추가하지 않고 15~20개 고정 질문으로 시작합니다.
 
