@@ -87,8 +87,8 @@ FORECAST_WORDS = (
     "전망", "예상", "예고", "가능성", "할까", "무게", "여부", "예정", "촉각",
     "검토", "유력", "앞두고",
 )
-UNCONFIRMED_OUTCOMES = (
-    "확정아냐", "확정아니", "확정되지", "확정안됐", "미확정", "사실무근",
+UNCONFIRMED_OUTCOME = re.compile(
+    r"미확정|사실무근|확정(?:이|은|된(?:것은|건|게))?(?:아냐|아니|되지|안됐)"
 )
 EXCHANGE_RATE_MOVEMENTS = (
     "상승", "하락", "아래", "위로", "떨어", "내려", "올라", "올랐", "내렸",
@@ -97,7 +97,7 @@ EXCHANGE_RATE_MOVEMENTS = (
 POLICY_SUBJECT_SUFFIX = r"(?:의|가|이|는|은)?(?:(?:금통위|금융통화위원회)(?:의|가|는)?)?"
 RATE_DECISION_HEADLINE = re.compile(
     POLICY_SUBJECT_SUFFIX + r"(?:기준|정책)금리(?:를|는)?(?:연)?(?:\d+(?:로|에서)?)?"
-    r"(?:인상|인하|동결|유지)"
+    r"(?:인상|인하|동결|유지)(?!하지)"
 )
 FX_POLICY_HEADLINE = re.compile(
     POLICY_SUBJECT_SUFFIX + r"(?:기준|정책)?금리(?:결정|발표|인상|인하|동결|유지)(?:직후|이후|후|뒤|에|여파)"
@@ -743,7 +743,8 @@ def find_event_evidence(
             or "？" in headline
             or any(word in compact_headline for word in FORECAST_WORDS)
             or continuation.startswith(FORECAST_WORDS)
-            or any(word in compact_headline + continuation for word in UNCONFIRMED_OUTCOMES)
+            or UNCONFIRMED_OUTCOME.search(compact_headline)
+            or UNCONFIRMED_OUTCOME.search(continuation)
         ):
             continue
         entity = KOREAN_POLICY_ENTITY.search(headline)

@@ -79,6 +79,8 @@ class NewsEventEvidenceTest(TestCase):
             article("reported", "한은, 기준금리 2.625%로 인하…추가 인하 전망"),
             article("forecast", "한은, 기준금리 2.875%로 인상…가능성 커져"),
             article("unconfirmed", "한국은행, 기준금리 3.125%로 인상…당국 ‘확정 아냐’"),
+            article("denied", "한국은행, 기준금리 3.375%로 인상…확정된 것은 아니다"),
+            article("negated", "한은, 기준금리 3.625%로 인상하지 않아"),
             article("rumor", "한은, 기준금리 3.375%로 인상 확정?"),
             article("wrong-actor", "한은, 미 연준 기준금리 4.625%로 동결 평가"),
             article("unrelated", "한은 연구원, 금융 박람회 일정 확정"),
